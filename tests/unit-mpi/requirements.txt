@@ -1,4 +1,0 @@
-pytest-isolate-mpi
-
-# force building mpi4py so that it picks up openmpi or mpich, whichever is installed
-mpi4py --no-binary=mpi4py

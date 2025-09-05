@@ -1,257 +1,289 @@
-"""Module which defines and handles Glia Cells and connectivity"""
-
+"""
+Module which defines and handles Glia Cells and connectivity
+"""
 import logging
-from pathlib import Path
-
-import libsonata
 import numpy as np
+import os.path
 
 from .cell_distributor import CellDistributor
+from .metype import BaseCell
 from .connection import Connection
 from .connection_manager import ConnectionManagerBase
-from .core import (
-    MPI,
-    EngineBase,
-    NeuronWrapper as Nd,
-    mpi_no_errors,
-)
-from .core.configuration import ConfigurationError, GlobalConfig, LogLevel
-from .io.sonata_config import ConnectionTypes
-from .io.synapse_reader import SonataReader, SynapseParameters
-from .metype import BaseCell
+from .core import EngineBase
+from .core import NeurodamusCore as Nd, MPI
+from .core.configuration import GlobalConfig
+from .io.synapse_reader import SynapseParameters, SynReaderSynTool
+from .utils import bin_search
+from .utils.logging import log_verbose
 from .morphio_wrapper import MorphIOWrapper
-from .utils.pyutils import append_recarray
 
 
 class Astrocyte(BaseCell):
-    __slots__ = ("_gluts", "glut_soma", "is_resized_sections_warning", "section_names")
+    __slots__ = ('_glut_list', '_secidx2names', '_nseg_warning')
 
     def __init__(self, gid, meinfos, circuit_conf):
-        """Initialize an Astrocyte cell:
+        """Instantiate a new Cell from mvd/node info."""
+        super().__init__(gid, meinfos, None)
+        morpho_path = circuit_conf.MorphologyPath
+        morph_filename = meinfos.morph_name + "." + circuit_conf.MorphologyType
+        morph_file = os.path.join(morpho_path, morph_filename)
+        self._cellref, self._glut_list, self._secidx2names, self._nseg_warning \
+            = self._init_cell(gid, morph_file)
+        self._cellref.gid = gid
 
-        - create the cell from Cell.hoc
-        - add the morphology
-        - resize sections if necessary
-        - add cadifus, GlutReceive (they will be connected later)
-        - record section_names for creating connections later
+    gid = property(lambda self: int(self._cellref.gid),
+                   lambda self, val: setattr(self._cellref, 'gid', val))
+
+    endfeet = property(lambda self: self._cellref.endfeet)
+
+    def create_endfeet(self, size):
         """
-        super().__init__()
+            Create endfeet sections in the cell's context.
+            :param size: number of sections to create
+        """
+        self._cellref.execute_commands(['create endfoot[{}]'.format(size),
+                                        'endfeet = new SectionList()',
+                                        'forsec "endfoot" endfeet.append'])
 
-        # Create the cell
-        self._cellref = Nd.Cell(gid)  # cell instantiated with Cell.hoc
-        # load and apply morphology
-        morph = MorphIOWrapper(
-            Path(circuit_conf.MorphologyPath)
-            / f"{meinfos.morph_name}.{circuit_conf.MorphologyType}"
-        )
-        self._cellref.AddHocMorph(morph.morph_as_hoc())
-        # Recalculate number of segments and sections
-        self._cellref.geom_nseg_fixed()
-        self._cellref.geom_nsec()
+    @staticmethod
+    def _er_as_hoc(morph_wrap):
+        """
+            Create hoc commands for Endoplasmic Reticulum data.
+            :param morph_wrap: MorphIOWrapper object holding MorphIO morphology object
+        """
 
+        '''
+            For example:
+                dend[0] { er_area_mcd = 0.21 er_vol_mcd = 0.4 }
+                dend[1] { er_area_mcd = 0.56 er_vol_mcd = 0.23 }
+                dend[2] { er_area_mcd = 1.3 er_vol_mcd = 0.78 }
+                dend[3] { er_area_mcd = 0.98 er_vol_mcd = 1.1 }
+        '''
+        cmds = []
+        cmds.extend(("{} {{ er_area_mcd = {:g} er_volume_mcd = {:g} }}".format(
+            morph_wrap.section_index2name_dict[sec_index],
+            er_area,
+            er_vol)
+            for sec_index, er_area, er_vol in zip(
+            morph_wrap.morph.endoplasmic_reticulum.section_indices,
+            morph_wrap.morph.endoplasmic_reticulum.surface_areas,
+            morph_wrap.morph.endoplasmic_reticulum.volumes)))
+        return cmds
+
+    @staticmethod
+    def _truncated_cone_surface_areas(perimeters, seg_lengths):
+        radii = perimeters / (2. * np.pi)
+        radii_starts = radii[:-1]
+        radii_ends = radii[1:]
+        slant_heights = np.sqrt(seg_lengths ** 2 + (radii_ends - radii_starts) ** 2)
+        return np.pi * (radii_starts + radii_ends) * slant_heights
+
+    @staticmethod
+    def _truncated_cone_volumes(diameters, seg_lengths):
+        r_begs = 0.5 * diameters[:-1]
+        r_ends = 0.5 * diameters[1:]
+        return (1. / 3.) * np.pi * (r_begs ** 2 + r_begs * r_ends + r_ends ** 2) * seg_lengths
+
+    @staticmethod
+    def _mcd_section_parameters(section):
+        points = section.points
+        diameters = section.diameters
+        perimeters = section.perimeters
+
+        segment_lengths = np.linalg.norm(points[1:] - points[:-1], axis=1)
+        segment_volumes = Astrocyte._truncated_cone_volumes(diameters, segment_lengths)
+        segment_surface_areas = Astrocyte._truncated_cone_surface_areas(perimeters, segment_lengths)
+
+        total_length = segment_lengths.sum()
+
+        # representing the entire section as a single cylinder
+        perimeter = segment_surface_areas.sum() / total_length
+        cross_sectional_area = segment_volumes.sum() / total_length
+
+        return section.id, perimeter, cross_sectional_area
+
+    @staticmethod
+    def _secparams_as_hoc(morph_wrap):
+        """
+            Create hoc commands for section parameters (perimeters & cross-sectional area)
+            :param morph_wrap: MorphIOWrapper object holding MorphIO morphology object
+
+            For example:
+                dend[0] { perimeter_mcd = 32 cross_sectional_area_mcd = 33}
+        """
+        cmds = []
+        cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
+            morph_wrap.section_index2name_dict[morph_sec_index + 1],
+            sec_perimeter,
+            sec_xsect_area)
+            for morph_sec_index, sec_perimeter, sec_xsect_area in
+            (Astrocyte._mcd_section_parameters(sec) for sec in morph_wrap.morph.sections)))
+        return cmds
+
+    @staticmethod
+    def _init_cell(gid, morph_file):
+        c = Nd.Cell(gid)
+        m = MorphIOWrapper(morph_file)
+        c.AddHocMorph(m.morph_as_hoc())
+
+        glut_list = []
+        c.geom_nseg_fixed()
+        c.geom_nsec()  # To recount all sections
+
+        # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
+        nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
 
-        # assigned later
-        self._gluts = {}
-        self.is_resized_sections_warning = False
-        for sec in self.all:
-            self._init_basic_section(sec)
+        for sec in c.all:
+            if sec.nseg > 1:
+                nseg_reduce_instance = 1
+                sec.nseg = 1
+            sec.insert("mcd")
+            glut = Nd.GlutReceive(sec(0.5), sec=sec)
+            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+            glut_list.append(glut)
 
-        # add GlutReceiveSoma (only for metabolism)
-        soma = self._cellref.soma[0]
-        self.glut_soma = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
+        # Endoplasmic reticulum
+        c.execute_commands(Astrocyte._er_as_hoc(m))
 
-        self.gid = gid
+        # Section parameters (perimeters & cross-sectional area)
+        c.execute_commands(Astrocyte._secparams_as_hoc(m))
 
-    def _init_basic_section(self, sec):
-        """Initialize a basic NEURON section with standard mechanisms.
+        # Print out mcd section parameters
+        # for sec in c.all:
+        #     self._show_mcd()
 
-        This function ensures the section has a single compartment (`nseg = 1`),
-        resizing it if necessary. After, it inserts the 'cadifus' mechanism used
-        for calcium diffusion. It returns whether the section had more
-        than one segment before resizing.
+        # Soma receiver must be last element in the glut_list
+        soma = c.soma[0]
+        soma.insert("mcd")
+        glut = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
+        glut_list.append(glut)
+        return c, glut_list, m.section_index2name_dict, nseg_reduce_instance
 
-        Parameters:
-            sec (neuron.h.Section): The section to initialize.
-        """
-        # resize if necessary
-        if sec.nseg > 1:
-            self.is_resized_sections_warning = True
-            sec.nseg = 1
-        # add cadifus mechanism for calcium diffusion
-        sec.insert("cadifus")
-
-    def _init_endfoot_section(
-        self,
-        sec,
-        parent_id: int,
-        length: float,
-        diameter: float,
-        R0pas: float,  # noqa: N803
-    ) -> bool:
-        """Initialize an endfoot NEURON section with custom geometry and mechanisms.
-
-        Parameters:
-            sec (neuron.h.Section): The endfoot section to initialize.
-            parent_id (int): Index to identify the parent section.
-            length (float): Length of the endfoot section.
-            diameter (float): Diameter of the endfoot section.
-            R0pas (float): Passive resistance parameter for the vascouplingB mechanism.
-        """
-        self._init_basic_section(sec)
-        sec.L = length
-        sec.diam = diameter
-        sec.insert("vascouplingB")
-        sec(0.5).vascouplingB.R0pas = R0pas
-        # connect to parent sec
-        parent_sec = self.get_sec(parent_id + 1)
-        sec.connect(parent_sec)
-
-    def get_glut(self, section_id):
-        """Return cached GlutReceive object for a section, creating it if needed."""
-        if section_id in self._gluts:
-            return self._gluts[section_id]
-        sec = self.get_sec(section_id)
-        glut = Nd.GlutReceive(sec(0.5), sec=sec)
-        sec(0.5).cadifus._ref_glu2 = glut._ref_glut
-        self._gluts[section_id] = glut
-        return glut
-
-    @property
-    def gid(self) -> int:
-        """Get the gid as an integer."""
-        return int(self._cellref.gid)
-
-    @gid.setter
-    def gid(self, val: int):
-        """Set the gid value."""
-        self._cellref.gid = val
-
-    @property
-    def all(self):
-        """Return the main SectionList (`_cellref.all`).
-
-        Note:
-            This list does **not** include all sections. Specifically,
-            endfeet sections are excluded and can be accessed via the `endfeet` attribute.
-        """
-        return self._cellref.all
-
-    @property
-    def endfeet(self):
-        """Returns _cellref.endfeet (SectionList)."""
-        if hasattr(self._cellref, "endfeet") and self._cellref.endfeet is not None:
-            return self._cellref.endfeet
-        return Nd.SectionList()
-
-    def add_endfeet(self, parent_ids, lengths, diameters, R0passes):  # noqa: N803
-        assert len(parent_ids) == len(lengths) == len(diameters) == len(R0passes)
-        self._cellref.execute_commands(
-            [
-                f"create endfoot[{len(parent_ids)}]",
-                "endfeet = new SectionList()",
-                'forsec "endfoot" endfeet.append',
-            ]
+    def _show_mcd(sec):
+        if not hasattr(sec(0.5), 'mcd'):
+            logging.info("No mcd mechanism found")
+            return
+        logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
+            sec,
+            sec(0.5).mcd.perimeter,
+            sec(0.5).mcd.cross_sectional_area,
+            sec(0.5).mcd.er_area,
+            sec(0.5).mcd.er_volume)
         )
-        for sec, parent_id, length, diameter, R0pas in zip(
-            self.endfeet, parent_ids, lengths, diameters, R0passes
-        ):
-            self._init_endfoot_section(sec, parent_id, length, diameter, R0pas)
+
+    def set_pointers(self):
+        glut_list = self._glut_list
+        c = self._cellref
+        index = 0
+
+        for sec in c.all:
+            glut = glut_list[index]
+            index += 1
+            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+        soma = c.soma[0]
+        glut = glut_list[index]
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
 
     @property
     def glut_list(self) -> list:
-        # necessary for legacy compatibility with metabolism
-        return [*self._gluts.values(), self.glut_soma]
+        return self._glut_list
 
     def connect2target(self, target_pp=None):
-        return Nd.NetCon(self._cellref.soma[0](1)._ref_v, target_pp, sec=self._cellref.soma[0])
+        return Nd.NetCon(self._cellref.soma[0](1)._ref_v, target_pp,
+                         sec=self._cellref.soma[0])
 
     @staticmethod
     def getThreshold():
         return 0.114648
 
+    @staticmethod
+    def getVersion():
+        return 99
+
 
 class AstrocyteManager(CellDistributor):
-    """Manages Astrocyte cells, extending CellDistributor
-
-    Behaves like CellDistributor but uses the Astrocyte cell type.
-    The difference lies only in the Cell Type.
-    """
-
+    # Cell Manager is the same as CellDistributor, so it's able to handle
+    # the same Node formats (mvd, ...) and Cell morphologies.
+    # The difference lies only in the Cell Type
     CellType = Astrocyte
     _sonata_with_extra_attrs = False
 
-    def _emit_resized_section_warnings(self):
-        """Collect and emit warnings for cells that had sections resized."""
-        gids = [cell.gid for cell in self._gid2cell.values() if cell.is_resized_sections_warning]
-        # Gather all warning maps to rank 0
-        gids = MPI.py_gather(gids, 0)
+    def post_stdinit(self):
+        nseg_warning = 0
+        for cell in self.cells:
+            cell.set_pointers()
+            nseg_warning += cell._nseg_warning
 
-        if MPI.rank == 0:
-            # flatten the list of gids
-            gids = [gid for sublist in gids for gid in sublist]
-            gids = sorted(gids)
-            logging.warning(
-                "Cells %s emitted warning: '%s'",
-                sorted(gids),
-                "Multi-compartment sections are not allowed at the moment."
-                "Resizing to 1 compartment.",
-            )
-
-    @mpi_no_errors
-    def _instantiate_cells(self, cell_type=None, **_opts):
-        super()._instantiate_cells(cell_type=cell_type, **_opts)
-        self._emit_resized_section_warnings()
-
-    @mpi_no_errors
-    def _instantiate_cells_dry(self, cell_type, skip_metypes, **_opts):
-        super()._instantiate_cells_dry(cell_type=cell_type, skip_metypes=skip_metypes, **_opts)
-        self._emit_resized_section_warnings()
+        MPI.allreduce(nseg_warning, MPI.SUM)
+        if nseg_warning:
+            logging.warning("Astrocyte sections with multiple compartments not yet supported."
+                            "Reducing %d to 1", nseg_warning)
 
 
 class NeuroGliaConnParameters(SynapseParameters):
-    """Neuron-to-glia connection parameters.
-
-    This class overrides the `_fields` attribute from `SynapseParameters` to define
-    parameters specific to neuro-glial interactions.
-
-    The `_optional` and `_reserved` dictionaries are inherited unchanged from the base class.
-
-    Note:
-        - Only `_fields` is overridden.
-        - All methods and behavior are reused from the base class.
-    """
-
-    _fields = {
-        "tgid": np.int64,
-        "synapse_id": np.int64,
-        "astrocyte_section_id": np.int64,
-        "astrocyte_segment_id": np.int64,
-        "astrocyte_segment_offset": np.float64,
-    }
+    _synapse_fields = [
+        "connected_neurons_post",
+        "synapse_id",
+        "astrocyte_section_id",
+        "astrocyte_segment_id",
+        "astrocyte_segment_offset"
+    ]
 
 
-class NeuroGlialSynapseReader(SonataReader):
-    LOOKUP_BY_TARGET_IDS = False
-    Parameters = NeuroGliaConnParameters
-    custom_parameters = set()
+class NeuroGlialSynapseReader(SynReaderSynTool):
+    def _load_reader(self, glia_gid, reader):
+        """ Override the function from base case.
+            Call loadSynapseCustom to read customized fields rather than the default fields
+            in SynapseReader.mod
+        """
+        req_fields_str = ", ".join(NeuroGliaConnParameters._synapse_fields)
+        nrow = int(reader.loadSynapseCustom(glia_gid, req_fields_str, True))
+        if nrow < 1:
+            return nrow, 0, 0, NeuroGliaConnParameters.empty
+
+        conn_syn_params = NeuroGliaConnParameters.create_array(nrow)
+        record_size = len(conn_syn_params.dtype)
+        return nrow, record_size, record_size, conn_syn_params
+
+    def get_synapse_parameters(self, glia_gid, _mod=None):
+        """Returns NeuroGlia synapses parameters for a given astrocyte
+        """
+        # Direct load and return. Cache is not worth being used
+        # NOTE: thanks to _gid_offset, glia gid here is already offset
+        return self._load_synapse_parameters(glia_gid)
+
+
+USE_COMPAT_SYNAPSE_ID = True
+"""
+Compat Synapse ID means the id is taken directly as the virtual gid, without any gap
+optimization. This is still required when nrank > 1
+"""
 
 
 class NeuroGlialConnection(Connection):
     neurons_not_found = set()
     neurons_attached = set()
-    netcon_delay = 0.05
-    syn_gid_offset = 1_000_000  # Below 1M is reserved for cell ids
 
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         # Only store params. Glia have mechanisms pre-created
-        self._synapse_params = append_recarray(self._synapse_params, params_obj)
+        self._synapse_params.append(params_obj)
 
-    def finalize(self, astrocyte, base_seed, *, base_connections=None, **kw):
-        """Bind each glia connection to synapses in connections target cells via
+    def finalize(self, astrocyte, base_Seed, *, base_connections=None, **kw):
+        """
+        Bind each glia connection to synapses in connections target cells via
         the assigned unique gid.
         """
+
+        # TODO: Currently it receives the base_connections object to look (bin search)
+        # for the sinapse to attach to. However since target cells and Glia might be
+        # distributed differently across MPI ranks, this is bound to work in a single rank.
+        # For the moment we fallback to using the original synapse id.
+
         self._netcons = []
+        glut_list = astrocyte.glut_list
+        n_bindings = 0
         pc = Nd.pc
 
         if GlobalConfig.debug_conn:
@@ -261,22 +293,60 @@ class NeuroGlialConnection(Connection):
                 logging.debug("Finalizing conn %s. Params:\n%s", self, self._synapse_params)
 
         for syn_params in self._synapse_params:
-            syn_gid = self.syn_gid_offset + syn_params.synapse_id
+            if USE_COMPAT_SYNAPSE_ID:
+                syn_gid = 1_000_000 + syn_params.synapse_id
+            else:
+                tgid_conns = base_connections.get(syn_params.connected_neurons_post)
+                syn_gid = self._find_neuron_endpoint_id(syn_params, tgid_conns)
+                if syn_gid is None:
+                    continue
 
-            # netcon to GlutReceive
-            glut_idx = int(syn_params.astrocyte_section_id)
-            glut_obj = astrocyte.get_glut(glut_idx)
+            glut_obj = glut_list[int(syn_params.astrocyte_section_id)]
             netcon = pc.gid_connect(syn_gid, glut_obj)
-            netcon.delay = self.netcon_delay
+            netcon.delay = 0.05
             self._netcons.append(netcon)
 
-            # netcon to GlutReceiveSoma for metabolism
+            # Soma netcon (last glut_list)
             logging.debug("[NGV] Conn %s linking synapse id %d to Astrocyte", self, syn_gid)
-            netcon = pc.gid_connect(syn_gid, astrocyte.glut_soma)
-            netcon.delay = self.netcon_delay
+            netcon = pc.gid_connect(syn_gid, glut_list[-1])
+            netcon.delay = 0.05
             self._netcons.append(netcon)
 
-        return len(self._synapse_params)
+            n_bindings += 1
+        return n_bindings
+
+    def _find_neuron_endpoint_id(self, syn_params, conns):
+        """
+        Gets the endpoint id on the neuronal synapse.
+        To avoid gaps, the optimized version has to search along the existing connections
+        for the given synapse id.
+
+        """
+        if not conns:
+            self.neurons_not_found.add(self.sgid)
+            return None
+
+        if conns[0].synapses_offset > syn_params.synapse_id:
+            logging.error("Data Error: TGID %d syn offset (%d) is larger than syn gid %d",
+                          conns[0].tgid, conns[0].synapses_offset, syn_params.synapse_id)
+            return None
+
+        c_i = bin_search(conns, syn_params.synapse_id, lambda c: c.synapses_offset)
+        # non-exact matches are attached to the left conn (base offset)
+        if len(conns) == c_i or syn_params.synapse_id < conns[c_i].synapses_offset:
+            c_i -= 1
+        conn = conns[c_i]
+        self.neurons_attached.add(conn.tgid)
+
+        # syn_gid: compute offset and add to the gid_base
+        syn_offset = int(syn_params.synapse_id - conn.synapses_offset)
+        assert syn_offset >= 0
+
+        syn_gid = conn.syn_gid_base + syn_offset
+        syn_id = conn.synapses[syn_offset].synapseID  # visible in the synapse events
+        log_verbose("[GLIA ATTACH] id %d to syn Gid %d (conn %d-%d, SynID %d, syn offset %d)",
+                    self.tgid, syn_gid, conn.sgid, conn.tgid, syn_id, syn_offset)
+        return syn_gid
 
 
 class NeuroGliaConnManager(ConnectionManagerBase):
@@ -287,25 +357,17 @@ class NeuroGliaConnManager(ConnectionManagerBase):
     must be used
     """
 
-    ustate_netcon_threshold = 0.0
-    ustate_netcon_delay = 0.0
-    ustate_netcon_weight = 1.1
-
-    CONNECTIONS_TYPE = ConnectionTypes.NeuroGlial
+    CONNECTIONS_TYPE = "NeuroGlial"
     conn_factory = NeuroGlialConnection
     SynapseReader = NeuroGlialSynapseReader
 
-    def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
-        kw.pop("load_offsets")
-        super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
-
-    @staticmethod
-    def _add_synapses(cur_conn, syns_params, _syn_type_restrict=None, _base_id=0):
+    def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
         for syn_params in syns_params:
             cur_conn.add_synapse(None, syn_params)
 
-    def finalize(self, base_seed=0, *_):
-        """Instantiate connections to the simulator.
+    def finalize(self, base_Seed=0, *_):
+        """
+        Instantiate connections to the simulator.
 
         This is a two-step process:
         First we create netcons to listen events on target synapses.Ustate,
@@ -316,30 +378,31 @@ class NeuroGliaConnManager(ConnectionManagerBase):
         logging.info("Creating virtual cells on target Neurons for coupling to GLIA...")
         base_manager = next(self._src_cell_manager.connection_managers.values())
 
-        total_created = self._create_synapse_ustate_endpoints(base_manager)
+        if USE_COMPAT_SYNAPSE_ID:
+            total_created = self._create_synapse_ustate_endpoints(base_manager)
+        else:
+            total_created = self._create_synapse_ustate_endpoints_optimized(base_manager)
 
         logging.info("(RANK 0) Created %d Virtual GIDs for synapses.", total_created)
 
-        super().finalize(
-            base_seed,
-            base_connections=None,
-            conn_type="NeuronGlia connections",
-        )
+        super().finalize(base_Seed,
+                         base_connections=base_manager.get_population(0),
+                         conn_type="NeuronGlia connections")
+
+        if not USE_COMPAT_SYNAPSE_ID:
+            logging.info("Target cells coupled to: %s", NeuroGlialConnection.neurons_attached)
 
         if NeuroGlialConnection.neurons_not_found:
-            logging.warning(
-                "Missing cells to couple Glia to: %d", len(NeuroGlialConnection.neurons_not_found)
-            )
+            logging.warning("Missing cells to couple Glia to: %d",
+                            len(NeuroGlialConnection.neurons_not_found))
 
-    @staticmethod
-    def _create_synapse_ustate_endpoints(base_manager):
-        """Creating an endpoint netcon to listen for events in synapse.Ustate
+    def _create_synapse_ustate_endpoints(self, base_manager):
+        """
+        Creating an endpoint netcon to listen for events in synapse.Ustate
         Netcon ids are directly the synapse id (hence we are limited in number space)
-
-        Note: we assume that the source synapse has a Ustate variable
         """
         pc = Nd.pc
-        syn_gid_base = NeuroGlialConnection.syn_gid_offset
+        syn_gid_base = 1_000_000  # Below 1M is reserved for cell ids
         total_created = 0
 
         for conn in base_manager.all_connections():
@@ -348,93 +411,126 @@ class NeuroGliaConnManager(ConnectionManagerBase):
             logging.debug("Tgid: %d, Base syn offset: %d", conn.tgid, tgid_syn_offset)
 
             for param_i, sec in conn.sections_with_synapses:
-                if conn.synapse_params[param_i].synType < 100:  # Skip Inhibitory
-                    continue
-                synapse_gid = tgid_syn_offset + param_i
-                pc.set_gid2node(synapse_gid, MPI.rank)
-                netcon = Nd.NetCon(
-                    syn_objs[param_i]._ref_Ustate,
-                    None,
-                    NeuroGliaConnManager.ustate_netcon_threshold,
-                    NeuroGliaConnManager.ustate_netcon_delay,
-                    NeuroGliaConnManager.ustate_netcon_weight,
-                    sec=sec,
-                )
-                # set the v-gid (that is actually an synapse id) to the netcon. Useful for
-                # reporting and debugging
-                pc.cell(synapse_gid, netcon)
-                if GlobalConfig.verbosity >= LogLevel.DEBUG:
-                    netcon.record(
-                        lambda tgid=conn.tgid, synapse_gid=synapse_gid: print(  # noqa: T201
-                            f"[gid={tgid}] Ustate netcon event. Spiking via v-gid={synapse_gid}"
-                        )
-                    )
-
-                conn._netcons.append(netcon)
-                total_created += 1
+                if conn.synapse_params[param_i].synType >= 100:  # Only Excitatory
+                    synapse_gid = tgid_syn_offset + param_i
+                    pc.set_gid2node(synapse_gid, MPI.rank)
+                    netcon = Nd.NetCon(syn_objs[param_i]._ref_Ustate, None, 0, 0, 1.1, sec=sec)
+                    pc.cell(synapse_gid, netcon)
+                    conn._netcons.append(netcon)
+                    total_created += 1
 
         return total_created
 
+    def _create_synapse_ustate_endpoints_optimized(self, base_manager):
+        # This is an optimized version to avoid using the global synapse id
+        # as the virtual gid, which would strongly limit the size of the circuits.
+        pc = Nd.pc
+        syn_gid_base = 100_000_000  # Below 100M is reserved for cell ids
+
+        # Get the total amount of synapses per rank and compute the base
+        # synapse_gid (sum synapse count in all previous ranks)
+        syn_counts = Nd.Vector(MPI.size)
+        local_syn_count = sum(len(conn.synapses) for conn in base_manager.all_connections())
+        MPI.allgather(local_syn_count, syn_counts)
+        if MPI.rank > 0:
+            syn_gid_base += syn_counts.sum(0, MPI.rank - 1)
+
+        for conn in base_manager.all_connections():
+            # Conn objects have a placeholder (syn_gid_base) for storing the id
+            # for its first synapse. This enables getting to the synapse directly
+            conn.syn_gid_base = syn_gid_base
+
+            syn_objs = conn.synapses
+            syn_i = None
+            logging.debug("Tgid: %d, Base syn gid: %d, Base syn offset: %d",
+                          conn.tgid, conn.syn_gid_base, conn.synapses_offset)
+
+            for syn_i, (param_i, sec) in enumerate(conn.sections_with_synapses):
+                if conn.synapse_params[param_i].synType >= 100:  # Only Excitatory
+                    synapse_gid = syn_gid_base + syn_i
+                    pc.set_gid2node(synapse_gid, MPI.rank)
+                    netcon = Nd.NetCon(syn_objs[syn_i]._ref_Ustate, None, 0, 0, 1.1, sec=sec)
+                    pc.cell(synapse_gid, netcon)
+                    conn._netcons.append(netcon)
+
+            # Next base is incremented number of synapses (last syn_i + 1)
+            if syn_i is not None:
+                syn_gid_base += syn_i + 1
+
+        return syn_gid_base - 100_000_000  # total created
+
 
 class GlioVascularManager(ConnectionManagerBase):
-    CONNECTIONS_TYPE = ConnectionTypes.GlioVascular
+    CONNECTIONS_TYPE = "GlioVascular"
     InnerConnectivityCls = None  # No synapses
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
         if cell_manager.circuit_target is None:
-            raise ConfigurationError("Circuit target is required for GlioVascular projections")
+            raise Exception(
+                "Circuit target is required for GlioVascular projections")
         if "Path" not in circuit_conf:
-            raise ConfigurationError("Missing GlioVascular Sonata file via 'Path' configuration")
-        if "VasculaturePath" not in circuit_conf:
-            raise ConfigurationError(
-                "Missing Vasculature Sonata file via 'VasculaturePath' configuration"
-            )
-
+            raise Exception("Missing GlioVascular Sonata file via 'Path' configuration")
         super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
         self._astro_ids = self._cell_manager.local_nodes.raw_gids()
         self._gid_offset = self._cell_manager.local_nodes.offset
 
     def open_edge_location(self, sonata_source, circuit_conf, **__):
         logging.info("GlioVascular sonata file %s", sonata_source)
+        import libsonata
+
         # sonata files can have multiple populations. In building we only use one
         # per file, hence this two lines below to access the first and only pop in
         # the file
         edge_file, *pop = sonata_source.split(":")
         storage = libsonata.EdgeStorage(edge_file)
-        pop_name = pop[0] if pop else next(iter(storage.population_names))
+        pop_name = pop[0] if pop else list(storage.population_names)[0]
         self._gliovascular = storage.open_population(pop_name)
 
-        storage = libsonata.NodeStorage(circuit_conf["VasculaturePath"])
-        pop_name = next(iter(storage.population_names))
-        self._vasculature = storage.open_population(pop_name)
-
     def create_connections(self, *_, **__):
-        # it also creates endfeet
         logging.info("Creating GlioVascular virtual connections")
         # Retrieve endfeet selections for GLIA gids on the current processor
-
         for astro_id in self._astro_ids:
             self._connect_endfeet(astro_id)
 
     def _connect_endfeet(self, astro_id):
-        endfeet = self._gliovascular.afferent_edges(astro_id - 1)  # 0-based for libsonata API
+        endfeet = self._gliovascular.afferent_edges(astro_id)
         if endfeet.flat_size > 0:
             # Get endfeet input
-
-            parent_section_ids = self._gliovascular.get_attribute("astrocyte_section_id", endfeet)
-            lengths = self._gliovascular.get_attribute("endfoot_compartment_length", endfeet)
-            diameters = self._gliovascular.get_attribute("endfoot_compartment_diameter", endfeet)
+            parent_section_ids = self._gliovascular.get_attribute('astrocyte_section_id', endfeet)
+            lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
+            diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
+            perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
 
             # Retrieve instantiated astrocyte
             astrocyte = self._cell_manager.gid2cell[astro_id + self._gid_offset]
 
-            # Retrieve R0pas
-            vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(endfeet))
-            d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
-            d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
-            R0passes = (d_vessel_starts + d_vessel_ends) / 4
+            # Create endfeet SectionList
+            astrocyte.create_endfeet(parent_section_ids.size)
 
-            astrocyte.add_endfeet(parent_section_ids, lengths, diameters, R0passes)
+            # Iterate through endfeet: insert mechanisms, set values and connect to parent section
+            for sec, parent_section_id, l, d, p in zip(astrocyte.endfeet,
+                                                       parent_section_ids,
+                                                       lengths,
+                                                       diameters,
+                                                       perimeters):
+                sec.L = l
+                sec.diam = d
+                sec.insert('vascouplingB')
+                sec.insert('mcd')
+                sec(0.5).mcd.perimeter = p
+                glut = Nd.GlutReceive(sec(0.5), sec=sec)
+                Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+                # because soma glut must be the last
+                astrocyte._glut_list.insert(len(astrocyte._glut_list)-1, glut)
+                exec('parent_sec = astrocyte.CellRef.{}; sec.connect(parent_sec)'.format(
+                    astrocyte._secidx2names[parent_section_id + 1]))
+                # astrocyte.CellRef.all.append(sec)
+            # Some useful debug lines:
+            # cell = astrocyte.CellRef
+            # logging.warn(str(cell.endfeet.printnames()))  # print endfeet section list names
+            # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
+            # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
+            # Nd.h('forall psection()')
 
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
@@ -443,6 +539,6 @@ class GlioVascularManager(ConnectionManagerBase):
 class NGVEngine(EngineBase):
     CellManagerCls = AstrocyteManager
     ConnectionTypes = {
-        ConnectionTypes.NeuroGlial: NeuroGliaConnManager,
-        ConnectionTypes.GlioVascular: GlioVascularManager,
+        "NeuroGlial": NeuroGliaConnManager,
+        "GlioVascular": GlioVascularManager
     }

@@ -1,9 +1,10 @@
-"""Loggeers init & Formatters"""
-
+"""
+Loggeers init & Formatters
+"""
+from __future__ import absolute_import
 import logging as _logging
 import os
 import sys
-
 from .pyutils import ConsoleColors
 
 STAGE_LOGLEVEL = 25
@@ -29,7 +30,7 @@ def log_verbose(msg, *args):
 
 def log_all(level, msg, *args):
     """Like logging.log, but always displays. Level is used for style only"""
-    _logging.log(ALWAYS_LEVEL, msg, *args, extra={"ulevel": level})
+    _logging.log(ALWAYS_LEVEL, msg, *args, extra={'ulevel': level})
 
 
 class _LevelColorFormatter(_logging.Formatter):
@@ -45,7 +46,8 @@ class _LevelColorFormatter(_logging.Formatter):
 
     _logfmt = "[%(levelname)s] %(message)s"
     _datefmt = "%b.%d %H:%M:%S"
-    _level_tabs = {VERBOSE_LOGLEVEL: " -> ", _logging.DEBUG: " + "}
+    _level_tabs = {VERBOSE_LOGLEVEL: ' -> ',
+                   _logging.DEBUG: ' + '}
 
     def __init__(self, with_time=True, rank=None, use_color=True, **kw):
         super().__init__(self._logfmt, self._datefmt, **kw)
@@ -71,24 +73,22 @@ class _LevelColorFormatter(_logging.Formatter):
     def _format_msg(self, record, style):
         msg = ""
         if self._with_time:
-            msg += f"({self.formatTime(record, self._datefmt)}) " + msg
+            msg += "(%s) " % self.formatTime(record, self._datefmt) + msg
         # Show rank only for ERRORs
         if self._rank is not None and record.levelno >= _logging.ERROR:
-            msg += f"(rank {self._rank:d}) "
+            msg += "(rank {:d}) ".format(self._rank)
 
         levelno = record.levelno
         msg += self._level_tabs.get(levelno, "") + record.msg
 
         if not self._use_color:
             return msg
-        return (
-            ConsoleColors.format_text(msg, style)
-            if levelno >= _logging.WARNING or levelno == VERBOSE_LOGLEVEL
+        return ConsoleColors.format_text(msg, style) \
+            if levelno >= _logging.WARNING or levelno == VERBOSE_LOGLEVEL \
             else ConsoleColors.format_text(msg, ConsoleColors.DEFAULT, style)
-        )
 
 
-def setup_logging(loglevel, logfile=None, rank=None, use_color=True):
+def setup_logging(loglevel, logfile=None, rank=None):
     """Setup neurodamus logging.
     Features tabs and colors output to stdout and pydamus.log
 
@@ -109,18 +109,18 @@ def setup_logging(loglevel, logfile=None, rank=None, use_color=True):
         _logging.DEBUG,
     ]
 
-    # stdout
+    # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    if use_color:
-        if os.environ.get("ENVIRONMENT") == "BATCH":
+    use_color = True
+    if os.environ.get("ENVIRONMENT") == "BATCH":
+        use_color = False
+    else:
+        try:
+            sys.stdout.tell()   # works only if it's file
             use_color = False
-        else:
-            try:
-                sys.stdout.tell()  # works only if it's file
-                use_color = False
-            except OSError:
-                pass
-    hdlr.setFormatter(_LevelColorFormatter(with_time=False, rank=rank, use_color=use_color))
+        except IOError:
+            pass
+    hdlr.setFormatter(_LevelColorFormatter(False, rank, use_color))
     if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
     else:
@@ -131,7 +131,7 @@ def setup_logging(loglevel, logfile=None, rank=None, use_color=True):
 
     if logfile:
         fileh = _logging.FileHandler(logfile, encoding="utf-8")
-        fileh.setFormatter(_LevelColorFormatter(with_time=True, rank=rank, use_color=False))
+        fileh.setFormatter(_LevelColorFormatter(rank=rank, use_color=False))
         _logging.root.addHandler(fileh)
 
     setup_logging.logging_initted = True

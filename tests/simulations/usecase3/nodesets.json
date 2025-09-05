@@ -1,9 +1,3 @@
 {
-  "nodesPopA": {"population": "NodeA"},
-  "nodesPopB": {"population": "NodeB"},
-  "l4pc": {"mtype": "L4_PC"},
-  "Mosaic": {"population": ["NodeA", "NodeB"]},
-  "virtual_target": {
-    "population": "A_virtual_neurons"
-  }
+  "l4pc": {"mtype": "L4_PC"}
 }

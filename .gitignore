@@ -1,13 +1,18 @@
 # Temporary and binary files
 *~
+*.py[cod]
+*.so
+*.cfg
+!setup.cfg
 *.orig
+*.log
 *.pot
-**/__pycache__/*
+__pycache__/*
 .cache/*
 .*.swp
 */.ipynb_checkpoints/*
 .vscode
-spack*
+spack-*
 
 # Project files
 .ropeproject
@@ -23,14 +28,18 @@ venv
 .installed.cfg
 *.egg-info
 
-# tests and coverage
-.coverage*
+# Unittest and coverage
+htmlcov/*
+.coverage
 .tox
+junit.xml
+coverage.xml
+tests/output
 
 # Build and docs folder/files
 build/*
 dist/*
 sdist/*
-docs/build/
+docs/_build/*
 cover/*
 MANIFEST

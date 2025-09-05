@@ -16,20 +16,22 @@ We searched for a minimal setup where two cells had a GJ and one of them receive
 used in the replay.
 
                       (GJ)
-      cells  ->  75779 <-> 80640 (1-based gids)
+      cells  ->  74188 <-> 74051
 projections  ->
 
-SONATA circuit
+Source Cells
 ------------
-Based on the official /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/circuit_config.json
-and a few patches from /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit,
-see (/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit/READ)
+$ h5ls -r /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsFunctionalAllRecipePathways/nrn.h5 | grep a74188
+/a74188                  Dataset {1217, 19}
 
-SONATA sub_mini2 circuit
-------------------------
-This local subcircuit is extracted from the v5_sonata SONATA circuit for the node_set "mini2" using brainbuilder:
-    brainbuilder sonata split-subcircuit --circuit circuit_config.json --nodeset mini5 --output sub_mini2 --include-virtual --create-external
-The source population in the external edges file "external_default.h5" is modified manually from "default" to "external_default" in order to offset the external node ids.
+Gap Junctions
+-------------
+>>> f = h5py.File("gap_junctions/gj.syn2")
+>>> res = f["synapses/default/properties/connected_neurons_pre"][:]
+>>> f["synapses/default/properties/connected_neurons_post"][numpy.where(res == 74188-1)]
+# notice 74050 shows up a few times
 
-The "morphologies" folder is extracted from "/gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12/ascii/".
-The "biophysical_model_templates" folder is extracted from "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/components/biophysical_model_templates".
+Projections
+-----------
+$ h5ls /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsThalamocortical_VPM_tcS2F_2p6_ps/proj_nrn.h5.5005 | grep 74188
+a74188                   Dataset {103, 19}

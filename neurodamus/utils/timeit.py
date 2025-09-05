@@ -1,4 +1,5 @@
-"""timeit classes, functions, decorators and context managers
+"""
+    timeit classes, functions, decorators and context managers
 
 NOTE: Implementation is done along the lines of timeit.hoc
 
@@ -105,33 +106,35 @@ PITFALLS:
                 replayed_count += 1
 
 """
-
+from __future__ import absolute_import
 import logging
 import time
-from contextlib import ContextDecorator, contextmanager
+
+from contextlib import contextmanager, ContextDecorator
 from itertools import chain
-from math import floor, log
+from math import log, floor
 
 from .logging import log_verbose
-from neurodamus.core import MPI, NeuronWrapper as Nd, run_only_rank0
+from ..core import NeurodamusCore as Nd, MPI, run_only_rank0
 
 
 def human_readable(num):
-    """Get a human readable version of a number.
+    """ Get a human readable version of a number.
     For example: 5200000 -> 5.20M
 
     Args:
         num: The number
     """
-    units = ["", "K", "M", "B", "T", "P"]
-    power = floor(log(num, 1000.0))
-    return f"{num / 1000.0**power:.2f}{units[power]:s}" if power >= 1 else str(int(num))
+    units = ['', 'K', 'M', 'B', 'T', 'P']
+    power = int(floor(log(num, 1000.)))
+    return '{:.2f}{:s}'.format(num / 1000. ** power, units[power]) if power >= 1 \
+        else str(int(num))
 
 
-delim = "+"
+delim = u'\u255a'
 
 
-class _Timer:
+class _Timer(object):
     total_time = property(lambda self: self._total_time)
     accumulated = property(lambda self: self._accumulated)
     name = property(lambda self: self._name)
@@ -158,51 +161,47 @@ class _Timer:
         self._start_time = None  # invalidate start time
 
     def log(self, keyword, seq_no=None):
-        log_verbose(
-            "{:s} {} {:<30s} {:.4f} {:s}".format(
-                keyword,
-                seq_no if seq_no is not None else "",
-                self._name,
-                self._last_time,
-                f"=> TotalTime: {self._total_time:g}" if self._accumulated else "",
-            )
-        )
+        log_verbose("{:s} {} {:<30s} {:.4f} {:s}".
+                    format(keyword,
+                           seq_no if seq_no is not None else '',
+                           self._name,
+                           self._last_time,
+                           "=> TotalTime: {:g}".format(self._total_time) if self._accumulated
+                           else ""))
 
 
-class _TimerManager:
-    _timers = {}
+class _TimerManager(object):
+    _timers = dict()
     _timers_sequence = 0
     _archived_timers = {}
 
     # archive current timers
     def archive(self, archive_name):
         self._archived_timers[archive_name] = self._timers
-        self._timers = {}
+        self._timers = dict()
 
     def init(self, name):
         self._timers.setdefault(name, _Timer(name))
         self._timers[name].start()
 
     def update(self, name, verbose=True):
-        if name not in self._timers:
-            raise Exception(f"{name} not initialized in timers dict")
+        if name not in self._timers.keys():
+            raise Exception("{} not initialized in timers dict".format(name))
         self._timers[name].stop()
         if verbose:
             self._log_timer(self._timers[name])
 
     @run_only_rank0
     def _log_timer(self, timer_info):
-        timer_info.log(
-            keyword="accum" if timer_info.accumulated else "setpvec", seq_no=self._timers_sequence
-        )
+        timer_info.log(keyword="accum" if timer_info.accumulated else "setpvec",
+                       seq_no=self._timers_sequence)
         self._timers_sequence += 1
 
     # Note: method name kept for reference wrt neurodamus-core timeit.hoc
     def timeit_show_stats(self):
         current_timers_name = "Final Stats" if len(self._archived_timers) else ""
-        for timers_name, timers in chain(
-            self._archived_timers.items(), ((current_timers_name, self._timers),)
-        ):
+        for timers_name, timers in chain(self._archived_timers.items(),
+                                         ((current_timers_name, self._timers),)):
             mpi_times = Nd.Vector(tinfo.total_time for tinfo in timers.values())
             avg_times = mpi_times.c()
             MPI.pc.allreduce(avg_times, MPI.SUM)
@@ -216,36 +215,32 @@ class _TimerManager:
 
             self._log_stats(timers_name, timers, avg_times, min_times, max_times, nof_hits)
 
-    @staticmethod
     @run_only_rank0
-    def _log_stats(timers_name, timers, avg_times, min_times, max_times, nof_hits):
-        stats_name = " TIMEIT STATS {}".format(
-            "(" + timers_name + ") " if timers_name else timers_name
-        )
-        logging.info(f"+{stats_name:=^111s}+")  # noqa: G004
-        logging.info(
-            "|{:^58s}|{:^10s}|{:^10s}|{:^10s}|{:^19s}|".format(
-                "Event Label", "Avg.Time", "Min.Time", "Max.Time", "Hits R0 / Total "
-            )
-        )
-        logging.info("+{:-^111s}+".format("-"))
+    def _log_stats(self, timers_name, timers, avg_times, min_times, max_times, nof_hits):
+        stats_name = " TIMEIT STATS {}".format('(' + timers_name + ') ' if timers_name
+                                               else timers_name)
+        logging.info("+{:=^111s}+".format(stats_name))
+        logging.info("|{:^58s}|{:^10s}|{:^10s}|{:^10s}|{:^19s}|".format(
+            'Event Label', 'Avg.Time', 'Min.Time', 'Max.Time', 'Hits R0 / Total '))
+        logging.info("+{:-^111s}+".format('-'))
 
         for t, (name, tinfo) in enumerate(timers.items()):
-            base_name = delim.join("  ") * name.count(delim) + name.split(delim)[-1]
-            logging.info(
-                f"| {base_name:<56s} | {avg_times.x[t] / MPI.size:8.2f} | "  # noqa: G004
-                f"{min_times.x[t]:8.2f} | "
-                f"{max_times.x[t]:8.2f} | {human_readable(tinfo.hits):>7s} / "
-                f"{human_readable(nof_hits.x[t]):<7s} |"
-            )
-        logging.info("+{:-^111s}+".format("-"))
+            base_name = delim.join('  ') * name.count(delim) + name.split(delim)[-1]
+            logging.info("| {:<56s} | {:8.2f} | {:8.2f} | {:8.2f} | {:>7s} / {:<7s} |".format(
+                base_name,
+                avg_times.x[t] / MPI.size,
+                min_times.x[t],
+                max_times.x[t],
+                human_readable(tinfo.hits),
+                human_readable(nof_hits.x[t])))
+        logging.info("+{:-^111s}+".format('-'))
 
 
 TimerManager = _TimerManager()  # singleton
 
 
 # Can be used as context manager or decorator
-class timeit(ContextDecorator):  # noqa: N801
+class timeit(ContextDecorator):
     curr_path = []
 
     def __init__(self, name, verbose=True):
@@ -257,7 +252,7 @@ class timeit(ContextDecorator):  # noqa: N801
         self._name = delim.join(timeit.curr_path)
         TimerManager.init(self._name)
 
-    def __exit__(self, _exc_type, _exc, _exc_tb):
+    def __exit__(self, exc_type, exc, exc_tb):
         TimerManager.update(self._name, self._verbose)
         timeit.curr_path.pop()
 

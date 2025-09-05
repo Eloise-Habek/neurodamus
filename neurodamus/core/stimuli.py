@@ -1,30 +1,40 @@
-"""Stimuli sources. inc current and conductance sources which can be attached to cells"""
+"""
+Stimuli sources. inc current and conductance sources which can be attached to cells
+"""
 
-import logging
-
+from __future__ import absolute_import
+from . import Neuron
 from .random import RNG, gamma
-from neurodamus.core import NeuronWrapper as Nd
+import logging
+import h5py
+import numpy as np
+from scipy.interpolate import interp1d, RegularGridInterpolator
+from neuron import h
+from scipy.spatial.transform import Rotation as R
 
 
 class SignalSource:
-    def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
-        """Creates a new signal source, which can create composed signals
+
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
+        """
+        Creates a new signal source, which can create composed signals
         Args:
             base_amp: The base (resting) amplitude of the signal (Default: 0)
             rng: The Random Number Generator. Used in the Noise functions
-            represents_physical_electrode: Whether the source represents a phsyical
-            electrode or missing synaptic input
         """
-        h = Nd.h
+        h = Neuron.h
         self.stim_vec = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
         self._base_amp = base_amp
         self._rng = rng
-        self._represents_physical_electrode = represents_physical_electrode
-        if delay > 0.0:
+        if delay > .0:
             self._add_point(base_amp)
             self._cur_t = delay
+
+    def reset(self):
+        self.stim_vec.resize(0)
+        self.time_vec.resize(0)
 
     def _add_point(self, amp):
         """Appends a single point to the time-signal source.
@@ -34,7 +44,8 @@ class SignalSource:
         self.stim_vec.append(amp)
 
     def delay(self, duration):
-        """Increments the ref time so that the next created signal is delayed"""
+        """Increments the ref time so that the next created signal is delayed
+        """
         # NOTE: We rely on the fact that Neuron allows "instantaneous" changes
         # and made all signal shapes return to base_amp. Therefore delay() doesn't
         # need to introduce any point to avoid interpolation.
@@ -52,22 +63,29 @@ class SignalSource:
         return self
 
     def add_pulse(self, max_amp, duration, **kw):
-        """Add a constant-amplitude pulse.
+        """Adds a pulse.
 
-        Generates a pulse with a constant amplitude (`max_amp`) for the specified `duration`.
-        This is a special case of `add_ramp` with no amplitude change over time.
-        """
-        return self.add_ramp(max_amp, max_amp, duration, **kw)
-
-    def add_ramp(self, amp1, amp2, duration, **kw):
-        """Add a linear amplitude ramp.
-
-        Creates a ramp signal that linearly changes amplitude from `amp1` to `amp2` over
-        the given `duration`. All intermediate values between the start and end times
-        are linearly interpolated.
+        A pulse is characterized by raising from a base amplitude, for a certain duration.
         """
         base_amp = kw.get("base_amp", self._base_amp)
         self._add_point(base_amp)
+        self.add_segment(max_amp, duration)
+        self._add_point(base_amp)
+        return self
+
+    def add_ramp(self, amp1, amp2, duration, **kw):
+        """Adds a ramp.
+
+        A ramp is characterized by a pulse whose peak changes uniformly during its length.
+        Neuron automatically interpolates all values between [t0, t1] as a ramp
+        """
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        self._add_point(base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
         self.add_segment(amp1, duration, amp2)
         self._add_point(base_amp)
         return self
@@ -76,28 +94,16 @@ class SignalSource:
         """Stimulus with repeated pulse injections at a specified frequency.
 
         Args:
-            amp (float): Amplitude of each pulse.
-            frequency (float): Number of pulses per second (Hz).
-            pulse_duration (float): Duration of a single pulse (peak time) in milliseconds.
-            total_duration (float): Total duration of the pulse train in milliseconds.
-            base_amp (float, optional): Base amplitude (default is 0.0).
-
-        Returns:
-            SignalSource: The instance of the SignalSource class with the configured pulse train.
+            amp: the amplitude of a each pulse
+            frequency: determines the number of pulses per second (hz)
+            pulse_duration: the duration of a single pulse (peak time) (ms)
+            total_duration: duration of the whole train (ms)
+            base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
+
         tau = 1000 / frequency
         delay = tau - pulse_duration
-
-        # we cannot have overlapping pulses otherwise we may go back in time.
-        # For now it is disabled until we decide how to handle this
-        if delay < 0.0:
-            raise ValueError(
-                f"Invalid configuration: The pulse duration ({pulse_duration} ms) is "
-                f"longer than the pulse interval ({tau} ms). Calculated delay: "
-                f"{delay} ms. Please adjust the pulse duration or frequency."
-            )
-
         number_pulses = int(total_duration / tau)
         for _ in range(number_pulses):
             self.add_pulse(amp, pulse_duration, base_amp=base_amp)
@@ -114,38 +120,271 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
-        """Builds a sinusoidal signal.
 
+    def add_train_arbitrary(self, amp, pulse_duration, frequency, total_duration, **kw):
+        """Stimulus with repeated pulse injections at a specified frequency.
+
+        Args:
+            amp: the amplitude of a each pulse
+            frequency: determines the number of pulses per second (hz)
+            pulse_duration: the duration of a single pulse (peak time) (ms)
+            total_duration: duration of the whole train (ms)
+            base_amp: The base amplitude
+        """
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        init_delay = kw.get("delay",0)
+        self.delay(init_delay)
+
+        tau = 1000 / frequency
+        delay = tau - np.sum(pulse_duration)
+        number_pulses = int(total_duration / tau)
+        for _ in range(number_pulses):
+            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
+            self.delay(delay)
+
+        # Add final pulse, if possible
+        remaining_time = total_duration - number_pulses * tau
+        if np.sum(pulse_duration) <= remaining_time:
+            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
+
+            self.delay(min(delay, remaining_time - np.sum(pulse_duration)))
+
+        # Last point
+        self._add_point(base_amp)
+        return self
+
+    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.025,**kw):
+
+
+        shift_freq = pulse_freq+carrier_freq
+
+
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        self.field1 = np.array([])
+        self.field2 = np.array([])
+
+
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + duration, step)
+        pulse_tt = np.array(tvec.to_python())
+
+
+        self.time_vec.append(tvec)
+        self.delay(duration)
+
+        # stim1 = Neuron.h.Vector(len(tvec))
+        #
+        #
+        # stim1.sin(carrier_freq, np.pi, step)
+        # stim1.mul(amp[0])
+        #
+        # stim2 = Neuron.h.Vector(len(tvec))
+        #
+        #
+        # stim2.sin(shift_freq, 0.0, step)
+        # stim2.mul(amp[1])
+        #
+        # stim = Neuron.h.Vector(len(tvec))
+        # stim = stim1.add(stim2)
+
+
+        pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
+
+        pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
+
+
+        self.field1 = np.hstack((self.field1,pulse_I1))
+        self.field2 = np.hstack((self.field2,pulse_I2))
+
+        # self.stim_vec.append(stim)
+        #
+        # # Last point
+        # self._add_point(base_amp)
+
+
+
+    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.01,**kw):
+
+
+        cycle_time = 1000/burst_freq
+
+
+        n_cycles = int(duration/cycle_time)
+
+        shift_freq = pulse_freq+carrier_freq
+
+
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        pulse_width = 1000/pulse_freq
+
+        pulse_time = pulse_width*pulse_number
+
+        break_time = cycle_time - pulse_time
+
+        self.field1 = np.array([])
+        self.field2 = np.array([])
+
+
+        for i in range(n_cycles):
+
+            tvec = Neuron.h.Vector()
+            tvec.indgen(self._cur_t, self._cur_t + pulse_time, step)
+            pulse_tt = np.array(tvec.to_python())
+
+
+            self.time_vec.append(tvec)
+            self.delay(pulse_time)
+
+
+            pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
+            pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
+
+
+
+            self.field1 = np.hstack((self.field1,pulse_I1))
+            self.field2 = np.hstack((self.field2,pulse_I2))
+
+            tvecB = Neuron.h.Vector()
+            tvecB.indgen(self._cur_t, self._cur_t + break_time, step)
+            break_tt = np.array(tvecB.to_python())
+            self.time_vec.append(tvecB)
+            self.delay(break_time)
+
+            break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*break_tt)
+            break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq/1000*break_tt+np.pi)
+
+            self.field1 = np.hstack((self.field1,break_I1))
+            self.field2 = np.hstack((self.field2,break_I2))
+
+
+
+
+    def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
+        """ Builds a sinusoidal signal.
         Args:
             amp: The max amplitude of the wave
             total_duration: Total duration, in ms
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
-        base_amp = kw.get("base_amp", self._base_amp)
 
-        tvec = Nd.h.Vector()
+
+        base_amp = kw.get("base_amp", self._base_amp)
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + total_duration, step)
         self.time_vec.append(tvec)
         self.delay(total_duration)
 
-        stim = Nd.h.Vector(len(tvec))
+        stim = Neuron.h.Vector(len(tvec))
+
+
         stim.sin(freq, 0.0, step)
-        stim.mul(amp)
+        stim.mul(amp[0])
+
         self.stim_vec.append(stim)
+
         self._add_point(base_amp)  # Last point
+
         return self
 
+    def add_sinspec(self, start, dur):
+        raise NotImplementedError()
+
+    def add_pulses(self, pulse_duration, amp, *more_amps, **kw):
+        """Appends a set of pulsed signals without returning to zero
+           Each pulse is applied 'dur' time.
+
+        Args:
+          pulse_duration: The duration of each pulse
+          amp: The amplitude of the first pulse
+          *more_amps: 2nd, 3rd, ... pulse amplitudes
+          **kw: Additional params:
+            - base_amp [default: 0]
+        """
+        # First and last are base_amp
+        base_amp = kw.get("base_amp", self._base_amp)
+        self._add_point(base_amp)
+        self.add_segment(amp, pulse_duration)
+        for amp in more_amps:
+            self.add_segment(amp, pulse_duration)
+        self._add_point(base_amp)
+        return self
+
+    def add_pulses_arbitrary(self, amp, width, **kw):
+
+        """Appends a set of pulsed signals without returning to zero
+           Each pulse is applied for time in list width.
+
+        Args:
+
+          width: List containing the duration of each pulse
+          amp: List containing the amplitude of each pulse
+          **kw: Additional params:
+            - base_amp [default: 0]
+        """
+        # First and last are base_amp
+        base_amp = kw.get("base_amp", self._base_amp)
+        ramp_up_time = kw.get("ramp_up_time", None)
+        ramp_down_time = kw.get("ramp_down_time", None)
+
+        self._add_point(base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        self._add_point((base_amp))
+
+        if ramp_up_time is not None or ramp_down_time is not None:
+            if ramp_up_time is None:
+                ramp_up_time = 0
+            if ramp_down_time is None:
+                ramp_down_time = 0
+
+            const_time = width[0] - (ramp_up_time + ramp_down_time)
+
+            if ramp_up_time > 0:
+                self.add_segment(base_amp, ramp_up_time, amp[0])
+
+            self.add_segment(amp[0], const_time)
+
+            if ramp_down_time > 0:
+                self.add_segment(amp[0], ramp_down_time, base_amp)
+
+        else:
+            self.add_segment(amp[0], width[0])
+
+        if len(amp) > 1:
+            for i in np.arange(1, len(amp)):
+
+                self.add_segment(amp[i], width[i])
+
+        self._add_point(base_amp)
+        return self
+
+
     def add_noise(self, mean, variance, duration, dt=0.5):
-        """Adds a noise component to the signal."""
+        """Adds a noise component to the signal.
+        """
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
             logging.warning("Using a default RNG for noise generation")
         rng.normal(mean, variance)
-        tvec = Nd.h.Vector()
+        tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)
-        svec = Nd.h.Vector(len(tvec))
+        svec = Neuron.h.Vector(len(tvec))
         svec.setrand(rng)
 
         # Delimit noise signals with base_amp
@@ -157,63 +396,51 @@ class SignalSource:
         self._add_point(self._base_amp)
         return self
 
-    def add_shot_noise(  # noqa: PLR0914
-        self,
-        tau_D,  # noqa: N803
-        tau_R,  # noqa: N803
-        rate,
-        amp_mean,
-        amp_var,
-        duration,
-        dt=0.25,
-    ):
-        """Adds a Poisson shot noise signal with gamma-distributed amplitudes and
-        bi-exponential impulse response: https://paulbourke.net/miscellaneous/functions/
+    def add_shot_noise(self, tau_D, tau_R, rate, amp_mean, amp_var, duration, dt=0.25):
+        """
+        Adds a Poisson shot noise signal with gamma-distributed amplitudes and
+        bi-exponential impulse response.
 
         tau_D: bi-exponential decay time [ms]
-        tau_R: bi-exponential raise time [ms]
+        tau_R: bi-exponential rise time [ms]
         rate: Poisson event rate [Hz]
         amp_mean: mean of gamma-distributed amplitudes [nA]
         amp_var: variance of gamma-distributed amplitudes [nA^2]
         duration: duration of signal [ms]
         dt: timestep [ms]
         """
-        from math import exp, isclose, log, sqrt
+        from math import sqrt, exp, log
 
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
             logging.warning("Using a default RNG for shot noise generation")
 
-        if isclose(tau_R, tau_D):
-            raise NotImplementedError(
-                f"tau_R ({tau_R}), and tau_D ({tau_D}) are too close. Edge case not implemented"
-            )
-
-        tvec = Nd.h.Vector()
+        tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)  # time vector
         ntstep = len(tvec)  # total number of timesteps
 
         rate_ms = rate / 1000  # rate in 1 / ms [mHz]
-        napprox = 1 + int(duration * rate_ms)  # approximate number of events, at least one
+        napprox = 1 + int(duration * rate_ms)       # approximate number of events, at least one
         napprox = int(napprox + 3 * sqrt(napprox))  # better bound, as in elephant
 
         exp_scale = 1 / rate  # scale parameter of exponential distribution of time intervals
         rng.negexp(exp_scale)
-        iei = Nd.h.Vector(napprox)
+        iei = Neuron.h.Vector(napprox)
         iei.setrand(rng)  # generate inter-event intervals
 
-        ev = Nd.h.Vector()
+        ev = Neuron.h.Vector()
         ev.integral(iei, 1).mul(1000)  # generate events in ms
-
-        assert ev[-1] >= duration, (
-            f"The last event (ev[-1]: {ev[-1]}) is before "
-            f"duration: {duration}. This should not be possible!"
-        )
-
+        # add events if last event falls short of duration
+        while ev[-1] < duration:
+            iei_new = Neuron.h.Vector(100)  # generate 100 new inter-event intervals
+            iei_new.setrand(rng)            # here rng is still negexp
+            ev_new = Neuron.h.Vector()
+            ev_new.integral(iei_new, 1).mul(1000).add(ev[-1])  # generate new shifted events in ms
+            ev.append(ev_new)  # append new events
         ev.where("<", duration)  # remove events exceeding duration
         ev.div(dt)  # divide events by timestep
 
-        nev = Nd.h.Vector([round(x) for x in ev])  # round to integer timestep index
+        nev = Neuron.h.Vector([round(x) for x in ev])  # round to integer timestep index
         nev.where("<", ntstep)  # remove events exceeding number of timesteps
 
         sign = 1
@@ -222,12 +449,12 @@ class SignalSource:
             amp_mean = -amp_mean
             sign = -1
 
-        gamma_scale = amp_var / amp_mean  # scale parameter of gamma distribution
+        gamma_scale = amp_var / amp_mean      # scale parameter of gamma distribution
         gamma_shape = amp_mean / gamma_scale  # shape parameter of gamma distribution
         # sample gamma-distributed amplitudes
         amp = gamma(rng, gamma_shape, gamma_scale, len(nev))
 
-        E = Nd.h.Vector(ntstep, 0)  # full signal
+        E = Neuron.h.Vector(ntstep, 0)  # full signal
         for n, A in zip(nev, amp):
             E.x[int(n)] += sign * A  # add impulses, may overlap due to rounding to timestep
 
@@ -240,10 +467,10 @@ class SignalSource:
         D = -log(a)
         R = -log(b)
         t_peak = log(R / D) / (R - D)
-        A = (a / b - 1) / (a**t_peak - b**t_peak)
+        A = (a / b - 1) / (a ** t_peak - b ** t_peak)
 
-        P = Nd.h.Vector(ntstep, 0)
-        B = Nd.h.Vector(ntstep, 0)
+        P = Neuron.h.Vector(ntstep, 0)
+        B = Neuron.h.Vector(ntstep, 0)
 
         # composite autoregressive process with exact solution
         # P[n] = b * (a ^ n - b ^ n) / (a - b)
@@ -263,7 +490,8 @@ class SignalSource:
         return self
 
     def add_ornstein_uhlenbeck(self, tau, sigma, mean, duration, dt=0.25):
-        """Adds an Ornstein-Uhlenbeck process with given correlation time,
+        """
+        Adds an Ornstein-Uhlenbeck process with given correlation time,
         standard deviation and mean value.
 
         tau: correlation time [ms], white noise if zero
@@ -272,19 +500,19 @@ class SignalSource:
         duration: duration of signal [ms]
         dt: timestep [ms]
         """
-        from math import exp, sqrt
+        from math import sqrt, exp
 
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
             logging.warning("Using a default RNG for Ornstein-Uhlenbeck process")
 
-        tvec = Nd.h.Vector()
+        tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)  # time vector
         ntstep = len(tvec)  # total number of timesteps
 
-        svec = Nd.h.Vector(ntstep, 0)  # stim vector
+        svec = Neuron.h.Vector(ntstep, 0)  # stim vector
 
-        noise = Nd.h.Vector(ntstep)  # Gaussian noise
+        noise = Neuron.h.Vector(ntstep)  # Gaussian noise
         rng.normal(0.0, 1.0)
         noise.setrand(rng)  # generate Gaussian noise
 
@@ -311,9 +539,8 @@ class SignalSource:
 
     # PLOTTING
     def plot(self, ylims=None):
-        from matplotlib import pyplot as plt
-
-        fig = plt.figure()
+        from matplotlib import pyplot
+        fig = pyplot.figure()
         ax = fig.add_subplot(1, 1, 1)  # (nrows, ncols, axnum)
         ax.plot(self.time_vec, self.stim_vec, label="Signal amplitude")
         ax.legend()
@@ -325,78 +552,62 @@ class SignalSource:
     # Helper methods forward generic kwargs to base class, like rng and delay
 
     @classmethod
-    def pulse(cls, max_amp, duration, base_amp=0.0, **kw):
+    def pulse(cls, max_amp, duration, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_pulse(max_amp, duration)
 
     @classmethod
-    def ramp(cls, amp1, amp2, duration, base_amp=0.0, **kw):
+    def ramp(cls, amp1, amp2, duration, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_ramp(amp1, amp2, duration)
 
     @classmethod
-    def train(cls, amp, frequency, pulse_duration, total_duration, base_amp=0.0, **kw):
+    def train(cls, amp, frequency, pulse_duration, total_duration, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_train(amp, frequency, pulse_duration, total_duration)
 
     @classmethod
-    def sin(cls, amp, total_duration, freq, step=0.025, base_amp=0.0, **kw):
+    def sin(cls, amp, total_duration, freq, step=0.025, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_sin(amp, total_duration, freq, step)
 
     @classmethod
-    def noise(cls, mean, variance, duration, dt=0.5, base_amp=0.0, **kw):
+    def noise(cls, mean, variance, duration, dt=0.5, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_noise(mean, variance, duration, dt)
 
     @classmethod
-    def shot_noise(cls, tau_D, tau_R, rate, amp_mean, var, duration, dt=0.25, base_amp=0.0, **kw):  # noqa: N803
+    def shot_noise(cls, tau_D, tau_R, rate, amp_mean, var, duration, dt=0.25, base_amp=.0, **kw):
         return cls(base_amp, **kw).add_shot_noise(tau_D, tau_R, rate, amp_mean, var, duration, dt)
 
     @classmethod
-    def ornstein_uhlenbeck(cls, tau, sigma, mean, duration, dt=0.25, base_amp=0.0, **kw):
-        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean, duration, dt)
+    def ornstein_uhlenbeck(cls, tau, sigma, mean, duration, dt=0.25, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean,duration, dt)
+
+    # Operations
+    def __add__(self, other):
+        """# Adds signals. Two added signals sum amplitudes"""
+        raise NotImplementedError("Adding signals is not available yet")
 
 
 class CurrentSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
-        """Creates a new current source that injects a signal under IClamp"""
-        super().__init__(
-            base_amp,
-            delay=delay,
-            rng=rng,
-            represents_physical_electrode=represents_physical_electrode,
-        )
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
+        """
+        Creates a new current source that injects a signal under IClamp
+        """
+        super().__init__(base_amp, delay=delay, rng=rng)
         self._clamps = set()
         self._all_sources.append(self)
 
     class _Clamp:
-        def __init__(
-            self,
-            cell_section,
-            position=0.5,
-            clamp_container=None,
-            stim_vec_mode=True,
-            time_vec=None,
-            stim_vec=None,
-            represents_physical_electrode=False,
-            **clamp_params,
-        ):
-            # Checks if source does not represent physical electrode,
-            # otherwise fall back to IClamp.
-            self.clamp = (
-                Nd.h.IClamp(position, sec=cell_section)
-                if represents_physical_electrode
-                else Nd.h.MembraneCurrentSource(position, sec=cell_section)
-            )
-
+        def __init__(self, cell_section, position=0.5, clamp_container=None,
+                     stim_vec_mode=True, time_vec=None, stim_vec=None,
+                     **clamp_params):
+            self.clamp = Neuron.h.IClamp(position, sec=cell_section)
             if stim_vec_mode:
-                assert time_vec is not None
-                assert stim_vec is not None
+                assert time_vec is not None and stim_vec is not None
                 self.clamp.dur = time_vec[-1]
                 stim_vec.play(self.clamp._ref_amp, time_vec, 1)
             else:
-                # this is probably unused
                 for param, val in clamp_params.items():
                     setattr(self.clamp, param, val)
-
             # Clamps must be kept otherwise they are garbage-collected
             self._all_clamps = clamp_container
             clamp_container.add(self)
@@ -407,69 +618,59 @@ class CurrentSource(SignalSource):
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        return CurrentSource._Clamp(
-            section,
-            position,
-            self._clamps,
-            stim_vec_mode=True,
-            time_vec=self.time_vec,
-            stim_vec=self.stim_vec,
-            represents_physical_electrode=self._represents_physical_electrode,
-        )
+        return CurrentSource._Clamp(section, position, self._clamps, True,
+                                    self.time_vec, self.stim_vec)
+
+    # Constant has a special attach_to and doesnt share any composing method
+    class Constant:
+        """Class implementing a minimal IClamp for a Constant current."""
+        _clamps = set()
+
+        def __init__(self, amp, duration, delay=0):
+            self._amp = amp
+            self._dur = duration
+            self._delay = delay
+
+        def attach_to(self, section, position=0.5):
+            return CurrentSource._Clamp(section, position, self._clamps, False,
+                                        amp=self._amp, delay=self._delay, dur=self._dur)
 
 
 class ConductanceSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, reversal=0.0, *, delay=0.0, rng=None, represents_physical_electrode=False):
-        """Creates a new conductance source that injects a conductance by driving
+    def __init__(self, reversal=0.0, *, delay=.0, rng=None):
+        """
+        Creates a new conductance source that injects a conductance by driving
         the rs of an SEClamp at a given reversal potential.
 
         reversal: reversal potential of conductance (mV)
         """
-        # set SignalSource's base_amp to zero
-        super().__init__(
-            reversal,
-            delay=delay,
-            rng=rng,
-            represents_physical_electrode=represents_physical_electrode,
-        )
-        self._reversal = reversal  # set reversal from base_amp parameter in classmethods
+        super().__init__(0.0, delay=delay, rng=rng)  # set SignalSource's base_amp to zero
+        self._reversal = reversal   # set reversal from base_amp parameter in classmethods
         self._clamps = set()
         self._all_sources.append(self)
 
     class _DynamicClamp:
-        def __init__(
-            self,
-            cell_section,
-            position=0.5,
-            clamp_container=None,
-            time_vec=None,
-            stim_vec=None,
-            reversal=0.0,
-            represents_physical_electrode=False,
-        ):
-            # source does not represent physical electrode,
-            # otherwise fall back to SEClamp.
-            self.clamp = (
-                Nd.h.SEClamp(position, sec=cell_section)
-                if represents_physical_electrode
-                else Nd.h.ConductanceSource(position, sec=cell_section)
-            )
-
-            assert time_vec is not None
-            assert stim_vec is not None
-            self.clamp.dur1 = time_vec[-1]
-            self.clamp.amp1 = reversal
-            # support delay with initial zero
-            self.time_vec = Nd.h.Vector(1, 0).append(time_vec)
-            self.stim_vec = Nd.h.Vector(1, 0).append(stim_vec)
-            # replace self.stim_vec with inverted and clamped signal
-            # rs is in MOhm, so conductance is in uS (micro Siemens)
-            self.stim_vec = Nd.h.Vector(
-                [1 / x if abs(x) > 1e-9 else (1e9 if x >= 0 else -1e9) for x in self.stim_vec]
-            )
-            self.stim_vec.play(self.clamp._ref_rs, self.time_vec, 1)
+        def __init__(self, cell_section, position=0.5, clamp_container=None,
+                     stim_vec_mode=True, time_vec=None, stim_vec=None,
+                     reversal=0.0, **clamp_params):
+            self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
+            if stim_vec_mode:
+                assert time_vec is not None and stim_vec is not None
+                self.clamp.dur1 = time_vec[-1]
+                self.clamp.amp1 = reversal
+                # support delay with initial zero
+                self.time_vec = Neuron.h.Vector(1, 0).append(time_vec)
+                self.stim_vec = Neuron.h.Vector(1, 0).append(stim_vec)
+                # replace self.stim_vec with inverted and clamped signal
+                # rs is in MOhm, so conductance is in uS (micro Siemens)
+                self.stim_vec = Neuron.h.Vector(
+                    [1 / x if x > 1E-9 and x < 1E9 else 1E9 for x in self.stim_vec])
+                self.stim_vec.play(self.clamp._ref_rs, self.time_vec, 1)
+            else:
+                for param, val in clamp_params.items():
+                    setattr(self.clamp, param, val)
             # Clamps must be kept otherwise they are garbage-collected
             self._all_clamps = clamp_container
             clamp_container.add(self)
@@ -480,15 +681,8 @@ class ConductanceSource(SignalSource):
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        return ConductanceSource._DynamicClamp(
-            section,
-            position,
-            self._clamps,
-            self.time_vec,
-            self.stim_vec,
-            self._reversal,
-            represents_physical_electrode=self._represents_physical_electrode,
-        )
+        return ConductanceSource._DynamicClamp(section, position, self._clamps, True,
+                                               self.time_vec, self.stim_vec, self._reversal)
 
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
@@ -505,3 +699,539 @@ class ConductanceSource(SignalSource):
 # and then vector.play() it into the currently accessed compartment
 #
 # TODO: 1. more stimulus primitives than step. 2. a dt of 0.1 ms is hardcoded. make this flexible!
+
+class ElectrodeSource(SignalSource):
+    _all_sources = []
+
+    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width, rotationAngles, pulseNumber, stepSize,
+                 ramp_up_time, ramp_down_time):
+
+
+        """
+        Creates a new source that injects a signal under e_extracellular
+        """
+        super().__init__()
+        self.pattern  = pattern
+        self.stim_delay = delay
+        self.duration = duration
+        self.AmpStart = AmpStart
+        self.frequency = frequency
+        self.width = width
+        self.type = type
+        self._all_sources.append(self)
+        self.extracellulars = []
+        self.axon1 = False
+        self.rotation_angles = rotationAngles
+        self.pulse_number = pulseNumber
+        self.stepSize = stepSize
+        self.ramp_up_time = ramp_up_time
+        self.ramp_down_time = ramp_down_time
+
+        if self.type == "Pulse":
+
+            self.add_pulses_arbitrary(self.AmpStart, self.width, delay=self.stim_delay,
+                                      ramp_up_time=self.ramp_up_time, ramp_down_time=self.ramp_down_time)
+
+        elif self.type == "Train":
+
+
+            self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
+
+        elif self.type == "Sinusoid":
+
+
+            self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay, step=self.stepSize)
+
+        elif self.type =='TI':
+
+            carrier_freq = self.frequency[0]
+            pulse_freq = self.frequency[1]
+
+            self.add_ti(self.AmpStart, self.duration, carrier_freq,pulse_freq,delay=self.stim_delay, step=self.stepSize)
+
+        elif self.type == "PulseTI":
+
+            carrier_freq = self.frequency[0]
+            pulse_freq = self.frequency[1]
+            burst_freq = self.frequency[2]
+
+            self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay, step=self.stepSize)
+
+        else:
+            raise Exception("Stimulus type not defined")
+
+    def get_soma_position(self,section):
+
+        n3d = section.n3d()
+
+
+        xpos = []
+        ypos = []
+        zpos = []
+
+        for n in range(n3d):
+            xpos.append(section.x3d(n))
+            ypos.append(section.y3d(n))
+            zpos.append(section.z3d(n))
+
+        x = np.mean(xpos)
+        y = np.mean(ypos)
+        z = np.mean(zpos)
+
+        print(np.array([x,y,z]),flush=True)
+
+        return np.array([x,y,z])
+
+    def grindaway(self,hsection):
+        """Grindaway"""
+
+        # get the data for the section
+        n_segments = int(h.n3d(sec=hsection))
+        n_comps = hsection.nseg
+
+        xs = np.zeros(n_segments)
+        ys = np.zeros(n_segments)
+        zs = np.zeros(n_segments)
+        lengths = np.zeros(n_segments)
+        for index in range(0, n_segments):
+            xs[index] = h.x3d(index, sec=hsection)
+            ys[index] = h.y3d(index, sec=hsection)
+            zs[index] = h.z3d(index, sec=hsection)
+            lengths[index] = h.arc3d(index, sec=hsection)
+
+        # to use Vector class's .interpolate()
+        # must first scale the independent variable
+        # i.e. normalize length along centroid
+        lengths /= (lengths[-1])
+
+        # initialize the destination "independent" vector
+        # range = np.array(n_comps+2)
+        comp_range = np.arange(0, n_comps + 2) / n_comps - \
+            1.0 / (2 * n_comps)
+        comp_range[0] = 0
+        comp_range[-1] = 1
+
+        # length contains the normalized distances of the pt3d points
+        # along the centroid of the section.  These are spaced at
+        # irregular intervals.
+        # range contains the normalized distances of the nodes along the
+        # centroid of the section.  These are spaced at regular intervals.
+        # Ready to interpolate.
+
+        xs_interp = np.interp(comp_range, lengths, xs)
+        ys_interp = np.interp(comp_range, lengths, ys)
+        zs_interp = np.interp(comp_range, lengths, zs)
+
+        return xs_interp, ys_interp, zs_interp
+
+    def get_positions(self,
+            hsection1=None,
+            location1=None):
+        """Gets position on a section
+
+        Parameters
+        ----------
+
+        hsection1 : hoc section
+                    First section
+        location1 : float
+                    range x along hsection1
+        """
+
+        xs_interp1, ys_interp1, zs_interp1 = self.grindaway(hsection1)
+
+        x1 = xs_interp1[int(np.floor((len(xs_interp1) - 1) * location1))]
+        y1 = ys_interp1[int(np.floor((len(ys_interp1) - 1) * location1))]
+        z1 = zs_interp1[int(np.floor((len(zs_interp1) - 1) * location1))]
+
+        pos1 = np.array([x1,y1,z1])
+
+        return pos1
+
+
+    def interp_seg_positions(self,section,x):
+
+
+        n3d = section.n3d()
+
+        xpos = []
+        ypos = []
+        zpos = []
+        lens = []
+
+        if n3d == 0:
+
+            xpos.append(self.soma_position[0])
+            ypos.append(self.soma_position[1])
+            zpos.append(self.soma_position[2])
+            lens.append(0)
+
+            xpos.append(self.soma_position[0])
+            ypos.append(self.soma_position[1])
+            lens.append(1)
+
+            if self.axon1 == False:
+                zpos.append(self.soma_position[2]+30)
+                self.axon1 = True
+            else:
+                zpos.append(self.soma_position[2]+60)
+
+        else:
+
+            for n in range(n3d):
+
+
+                xpos.append(section.x3d(n))
+                ypos.append(section.y3d(n))
+                zpos.append(section.z3d(n))
+                lens.append(section.arc3d(n)/section.L)
+
+
+        fX = interp1d(lens,xpos)
+        segX = fX(x)
+        fY = interp1d(lens,ypos)
+        segY = fY(x)
+        fZ = interp1d(lens,zpos)
+        segZ = fZ(x)
+
+        segpos = np.array([segX,segY,segZ])
+
+
+        return segpos
+
+    def rotate(self,segpositions):
+
+        # Rotates segment positions about x, y, or z axis
+
+        newsegs = segpositions.copy()
+
+
+        newsegs -= self.new_soma_pos
+
+        alpha = self.rotation_angles[2]*np.pi/180
+        beta = self.rotation_angles[1]*np.pi/180
+        gamma = self.rotation_angles[0]*np.pi/180
+
+        R = np.array([[np.cos(beta)*np.cos(gamma),np.sin(alpha)*np.sin(beta)*np.cos(gamma)-np.cos(alpha)*np.sin(gamma),np.cos(alpha)*np.sin(beta)*np.cos(gamma)+np.sin(alpha)*np.sin(gamma)],\
+        [np.cos(beta)*np.sin(gamma),np.sin(alpha)*np.sin(beta)*np.sin(gamma)+np.cos(alpha)*np.cos(gamma),np.cos(alpha)*np.sin(beta)*np.sin(gamma)-np.sin(alpha)*np.cos(gamma)],\
+        [-np.sin(beta),np.sin(alpha)*np.cos(beta),np.cos(alpha)*np.cos(beta)]])
+
+        newsegs = np.matmul(R,newsegs)
+
+        newpositions = newsegs + self.new_soma_pos
+
+        return newpositions
+
+    def rotate_about_axis(self, segpositions):
+
+        # Rotates segment positions about arbitrary axis
+
+        newsegs = segpositions.copy()
+
+        newsegs -= self.new_soma_pos
+
+        for i, r in enumerate(self.rotation_angles[:2]):
+            q0 = np.cos(r/2*np.pi/180)
+            q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
+            q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
+            q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
+
+            rotation = [q1,q2,q3,q0]
+
+            finalrotation = R.from_quat(rotation)
+
+            newsegs = finalrotation.apply(newsegs)
+
+        newpositions = newsegs + self.new_soma_pos
+
+        return newpositions
+
+
+    def apply_ramp(self, vector, ramp_up_number, ramp_down_number):
+
+        if ramp_up_number is not None:
+            ramp_up = np.linspace(0, 1, ramp_up_number)
+        if ramp_down_number is not None:
+            ramp_down = np.linspace(1, 0, ramp_down_number)
+
+        if ramp_up_number is not None:
+            vector[:ramp_up_number] *= ramp_up
+
+        if ramp_down_number is not None:
+            vector[len(vector) - ramp_down_number:] *= ramp_down
+
+        return vector
+
+    def attach_to(self, section, x, **kw):
+
+
+        self.extracellulars.append(self.time_vec)
+
+        seg = section(x)
+
+        section.insert('extracellular')
+
+        ramp_up_number = kw.get("ramp_up_number", None)
+        ramp_down_number = kw.get("ramp_down_number", None)
+
+        print('section is '+section.name())
+
+        scaleFac, newpos = self.get_scale_factor(section, x)
+
+        if 'TI' in self.type:
+
+            field1 = self.field1 * scaleFac[0]
+            field2 = self.fieldfoff2 * scaleFac[-1]
+
+            field = field1 + field2
+
+            field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
+
+            segVec = h.Vector()
+            segVec = segVec.from_python(field)
+
+
+        elif self.type == 'Sinusoid':
+
+            segVec = h.Vector()
+
+            newstimVec = self.stim_vec.to_python()
+
+            newstimVec = self.apply_ramp(newstimVec, ramp_up_number, ramp_down_number)
+
+            for v in newstimVec:
+                segVec.append(v)
+
+            segVec.mul(scaleFac[0])
+
+        else:
+
+            segVec = h.Vector()
+            segVec.copy(self.stim_vec)
+            segVec.mul(scaleFac[0])
+
+        self.extracellulars.append(segVec)
+        self.extracellulars.append(seg.extracellular)
+        self.extracellulars.append(seg.extracellular.e)
+
+        out = segVec.play(seg.extracellular._ref_e, self.time_vec)
+        self.extracellulars.append(out)
+
+
+
+        return segVec.to_python(), self.time_vec.to_python(), newpos
+
+class PointSourceElectrode(ElectrodeSource):
+
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time, x, y, z, sigma=0.277):
+
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,
+                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
+
+        # x,y,z positions of electrode, sigma is extracellular conductivity
+        self.x = x
+        self.y = y
+        self.z = z
+        self.sigma = sigma
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+            segpositions = self.interp_seg_positions(section, x)
+
+        if isinstance(self.offset, np.ndarray):
+
+            segpositions -= self.soma_position.copy()
+
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+            self.new_soma_pos = self.offset * 1e3
+
+        else:
+            self.new_soma_pos = self.soma_position.copy()
+
+        distance = np.linalg.norm(np.array([self.x, self.y, self.z])-segpositions)
+
+        scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
+
+        return [scaleFactor], newsegpositions
+
+class ConstantEfield(ElectrodeSource):
+
+    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width,
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
+                 offset, constantAxis, somaPosition):
+
+        super().__init__(pattern, delay, type, duration, AmpStart, frequency, width,
+                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
+        self.constantAxis = constantAxis
+        self.soma_position = somaPosition
+        self.offset = offset
+
+
+    def constant_potentials(self, segpositions):
+
+        # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
+
+        if self.rotation_angles is not None:
+            newsegpositions = self.rotate(segpositions)
+
+        else:
+            newsegpositions = segpositions.copy()
+
+        print('newsegpositions are')
+        print(newsegpositions)
+        print('soma position is')
+        print(self.soma_position)
+
+        if self.constantAxis == 'x':
+            outputs = newsegpositions[0] - self.soma_position[0]
+        elif self.constantAxis == 'y':
+            outputs = newsegpositions[1] - self.soma_position[1]
+        else:
+            outputs = newsegpositions[2] - self.soma_position[2]
+
+        outputs *= 1e-6 # Returns value in meters
+
+        print('now newseg is')
+        print(newsegpositions)
+
+        return np.array([outputs]), newsegpositions
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            #segpositions = self.get_positions(section,x)
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+
+            if int(h.n3d(sec=section)) == 0:
+                segpositions = self.interp_seg_positions(section, x)
+            else:
+                segpositions = self.get_positions(section,x)
+
+
+
+        if isinstance(self.offset, np.ndarray):
+
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+
+
+        self.new_soma_pos = self.soma_position.copy()
+
+
+
+        scaleFactor, newpositions = self.constant_potentials(segpositions)
+
+        print('scalefactor is')
+
+        print(scaleFactor)
+
+        return scaleFactor * 1e3, newpositions # multiplies scale factor by 1e3 to get potential in mV
+
+class RealElectrode(ElectrodeSource):
+
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
+                 electrode_path, offset, current_applied, soma_position, axes):
+
+
+        super().__init__(pattern, delay, type, duration,  AmpStart,
+                         frequency, width, rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
+
+        self.electrode_path = electrode_path
+        self.offset = offset
+        self.current_applied = current_applied
+        self.soma_position = soma_position
+        self.rotation_axes = axes
+
+    def geth5Dataset(self, h5f, group_name, dataset_name):
+        """
+        Find and get dataset from h5 file.
+        out = geth5Dataset(h5f, group_name, dataset_name)
+        h5f - string - h5 file path and name
+        group_name - string - where to initiate search, '/' for root
+        dataset_name - string - dataset to be found
+        return - numpy array
+        """
+
+        def find_dataset(name):
+            """ Find first object with dataset_name anywhere in the name """
+            if dataset_name in name:
+                return name
+
+        with h5py.File(h5f, 'r') as f:
+            k = f[group_name].visit(find_dataset)
+            return f[group_name + '/' + k][()]
+
+    def interpolate_potentials(self, segpositions):
+
+        if self.rotation_angles is not None:
+            newsegpositions = self.rotate(segpositions)
+
+        else:
+            newsegpositions = segpositions.copy()
+
+        '''
+        path_to_input is the path to the h5 file containing the potential field, outputted from Sim4Life
+        path_to_positions is the path to the output from the position-finding script
+        '''
+
+        outputs = []
+
+        for numFile, file in enumerate(self.electrode_path):
+
+        # Get potential field from output of finite element simulation
+
+            f =  h5py.File(file, 'r')
+            for i in f['FieldGroups']:
+                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
+            pot = self.geth5Dataset(file, tmp, 'comp0')
+            for i in f['Meshes']:
+                tmp = 'Meshes/' + i
+                break
+            x = self.geth5Dataset(file, tmp, 'axis_x')
+            y = self.geth5Dataset(file, tmp, 'axis_y')
+            z = self.geth5Dataset(file, tmp, 'axis_z')
+
+            InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
+
+            out2rat = InterpFcn(newsegpositions*1e-6)
+
+            outputs.append(out2rat[0]/self.current_applied[numFile])
+
+            return np.array(outputs), newsegpositions
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+            segpositions = self.interp_seg_positions(section, x)
+
+        if isinstance(self.offset, np.ndarray):
+
+            segpositions -= self.soma_position.copy()
+
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+            self.new_soma_pos = self.offset * 1e3
+
+        else:
+            self.new_soma_pos = self.soma_position.copy()
+
+        scaleFac, newsegpositions = self.interpolate_potentials(segpositions)
+        scaleFac *= 1e3 # (1e3 to go from V to mV)
+
+        return scaleFac, newsegpositions

@@ -1,9 +1,9 @@
-"""Internal module which defines an MPI object based on Neuron's ParallelContext"""
-
+"""
+Internal module which defines an MPI object based on Neuron's ParallelContext
+"""
 import logging
 import sys
 import time
-
 from ._neuron import Neuron
 
 
@@ -11,9 +11,9 @@ class OtherRankError(RuntimeError):
     pass
 
 
-class _MPI:
-    """A singleton of MPI runtime information"""
-
+class _MPI(object):
+    """A singleton of MPI runtime information
+    """
     _size = 1
     _rank = 0
     _pc = None
@@ -44,13 +44,9 @@ class _MPI:
 
             # Print exceptions local to this rank
             time.sleep(0.01 * cls._rank)  # Order errors
-
-            # exception should be set, hence the exc_info
-            logging.critical(str(value), exc_info=True)  # noqa: LOG014
-
+            logging.critical(str(value), exc_info=True)
             if cls._rank == 0:
                 import traceback
-
                 traceback.print_tb(tb)
 
             # Participate in check_no_errors allreduce, letting it know there was exception
@@ -86,28 +82,6 @@ class _MPI:
             return object.__getattribute__(self, name)
         self._init_pc()
         return getattr(self._pc, name)
-
-    def py_sum(self, local_counter, aggregated_object):
-        """An MPI function which gathers all local objects to rank 0 and sums them
-        This is best suited for non-pod python objects which support sum, like `Counter`
-        """
-        all_counters = [local_counter] + [None] * (MPI.size - 1)  # send to rank0
-        all_counters = self.pc.py_alltoall(all_counters)
-        if MPI.rank == 0:
-            for counter in all_counters:
-                aggregated_object += counter
-        return aggregated_object
-
-    def py_reduce(self, local_counter, aggregated_object, reduce_f):
-        """An MPI function which gathers all local objects to rank 0 and reduces them according to a
-        reducing function. This is best suited for non-pod Python objects
-        """
-        all_objects = [local_counter] + [None] * (MPI.size - 1)  # send to rank0
-        all_objects = self.pc.py_alltoall(all_objects)
-        if MPI.rank == 0:
-            for obj in all_objects:
-                reduce_f(aggregated_object, obj)
-        return aggregated_object
 
 
 MPI = _MPI()

@@ -1,46 +1,52 @@
-import logging
+from __future__ import absolute_import
 import os
 import sys
+import logging
 from time import strftime
-
 from ._engine import EngineBase
-from ._mpi import MPI
+from ..utils import classproperty
+from ..utils.logging import setup_logging, log_stage, log_verbose
+from .configuration import GlobalConfig, EXCEPTION_NODE_FILENAME
 from ._neuron import _Neuron
-from .configuration import GlobalConfig
-from neurodamus.utils.logging import log_stage, log_verbose, setup_logging
+from ._mpi import MPI
 
 HOCLIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
 LOG_FILENAME = "pydamus_{}.log".format(strftime("%Y-%m-%d_%Hh%M"))
 
 
-class _NeuronWrapper(_Neuron):
-    """A wrapper class representing an instance of Neuron with the required
+class _NeurodamusCore(_Neuron):
+    """
+    A wrapper class representing an instance of Neuron with the required
     neurodamus hoc and mod modules loaded
     """
-
     __slots__ = ()
     _pc = None
 
-    @property
-    def h(self):
-        """The neuron hoc interpreter, initializing if needed"""
-        self._pc or self._init()
-        return self._h
+    @classproperty
+    def h(cls):
+        """The neuron hoc interpreter, initializing if needed
+        """
+        cls._pc or cls._init()
+        return cls._h
 
     @classmethod
-    def _init(cls, log_filename=LOG_FILENAME, log_use_color=True):
+    def _init(cls, *args):
         if cls._pc is not None:
             return
         # Neurodamus requires MPI. We still respect NEURON_INIT_MPI though
-        _Neuron._init(int(os.environ.get("NEURON_INIT_MPI", "1")))  # if needed, sets cls._h
+        _Neuron._init(int(os.environ.get("NEURON_INIT_MPI", 1)))  # if needed, sets cls._h
 
         # Init logging
-        log_filename = log_filename or LOG_FILENAME
         if MPI.rank == 0:
-            open(log_filename, "w", encoding="utf-8").close()  # Truncate
+            open(LOG_FILENAME, "w").close()  # Truncate
         MPI.barrier()  # Sync so that all processes see the file
-        setup_logging(GlobalConfig.verbosity, log_filename, MPI.rank, use_color=log_use_color)
-        log_stage("Initializing Neurodamus... Logfile: " + log_filename)
+        setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
+        log_stage("Initializing Neurodamus... Logfile: " + LOG_FILENAME)
+
+        # Some previous executions may have left a bad exception node file
+        # This is done now so it's a very early stage and we know the mpi rank
+        if MPI.rank == 0 and os.path.exists(EXCEPTION_NODE_FILENAME):
+            os.remove(EXCEPTION_NODE_FILENAME)
 
         # Load mods if not available
         cls._load_nrnmechlibs()
@@ -50,7 +56,8 @@ class _NeuronWrapper(_Neuron):
         cls.load_hoc(HOCLIB)
 
         # Additional libraries introduced in saveUpdate
-        sys.path.append(os.environ["HOC_LIBRARY_PATH"])
+        sys.path.append(os.environ['HOC_LIBRARY_PATH'])
+        cls.load_hoc("CompartmentMapping")
 
         # Attempt to instantiate BBSaveState to early detect errors
         cls._h.BBSaveState()
@@ -80,6 +87,7 @@ class _NeuronWrapper(_Neuron):
         def check_load_lib(mech, env_lib_path):
             if hasattr(cls._h, mech):
                 return True
+            print(env_lib_path,flush=True)
             mechlib = os.environ.get(env_lib_path)
             if mechlib is None:
                 return False
@@ -87,7 +95,7 @@ class _NeuronWrapper(_Neuron):
             for libpath in mechlib.split(":"):
                 libpath = libpath.strip()
                 if os.path.isfile(libpath):
-                    logging.info("Loading MECH lib: %s", libpath)
+                    logging.info("Loading MECH lib: " + libpath)
                     cls.load_dll(libpath)
                 else:
                     logging.warning("Invalid entry in %s: %s", env_lib_path, libpath)
@@ -98,7 +106,7 @@ class _NeuronWrapper(_Neuron):
         # which might not bring the model (support for split neurodamus) in which case
         # we should load only the model libs pointed by BGLIBPY_MOD_LIBRARY_PATH.
 
-        if not check_load_lib("SonataReport", "NRNMECH_LIB_PATH"):
+        if not check_load_lib("SpikeWriter", "NRNMECH_LIB_PATH"):
             logging.error("Could not load neurodamus core mechs from NRNMECH_LIB_PATH")
             sys.exit(1)
         if not check_load_lib("ProbAMPANMDA_EMS", "BGLIBPY_MOD_LIBRARY_PATH"):
@@ -110,9 +118,9 @@ class _NeuronWrapper(_Neuron):
         self._pc or self._init()
         return self._pc
 
-    def init(self, **kwargs):
-        self._pc or self._init(**kwargs)
+    def init(self):
+        self._pc or self._init()
 
 
 # Singleton
-NeuronWrapper = _NeuronWrapper()
+NeurodamusCore = _NeurodamusCore()
