@@ -24,6 +24,7 @@ class SignalSource:
         """
         h = Neuron.h
         self.stim_vec = h.Vector()
+        self.stim_vec2 = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
         self._base_amp = base_amp
@@ -121,154 +122,6 @@ class SignalSource:
         return self
 
 
-    def add_train_arbitrary(self, amp, pulse_duration, frequency, total_duration, **kw):
-        """Stimulus with repeated pulse injections at a specified frequency.
-
-        Args:
-            amp: the amplitude of a each pulse
-            frequency: determines the number of pulses per second (hz)
-            pulse_duration: the duration of a single pulse (peak time) (ms)
-            total_duration: duration of the whole train (ms)
-            base_amp: The base amplitude
-        """
-        base_amp = kw.get("base_amp", self._base_amp)
-
-        init_delay = kw.get("delay",0)
-        self.delay(init_delay)
-
-        tau = 1000 / frequency
-        delay = tau - np.sum(pulse_duration)
-        number_pulses = int(total_duration / tau)
-        for _ in range(number_pulses):
-            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
-            self.delay(delay)
-
-        # Add final pulse, if possible
-        remaining_time = total_duration - number_pulses * tau
-        if np.sum(pulse_duration) <= remaining_time:
-            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
-
-            self.delay(min(delay, remaining_time - np.sum(pulse_duration)))
-
-        # Last point
-        self._add_point(base_amp)
-        return self
-
-    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.025,**kw):
-
-
-        shift_freq = pulse_freq+carrier_freq
-
-
-        base_amp = kw.get("base_amp", self._base_amp)
-
-        delay = kw.get("delay",0)
-        self.delay(delay)
-
-        self.field1 = np.array([])
-        self.field2 = np.array([])
-
-
-
-        tvec = Neuron.h.Vector()
-        tvec.indgen(self._cur_t, self._cur_t + duration, step)
-        pulse_tt = np.array(tvec.to_python())
-
-
-        self.time_vec.append(tvec)
-        self.delay(duration)
-
-        # stim1 = Neuron.h.Vector(len(tvec))
-        #
-        #
-        # stim1.sin(carrier_freq, np.pi, step)
-        # stim1.mul(amp[0])
-        #
-        # stim2 = Neuron.h.Vector(len(tvec))
-        #
-        #
-        # stim2.sin(shift_freq, 0.0, step)
-        # stim2.mul(amp[1])
-        #
-        # stim = Neuron.h.Vector(len(tvec))
-        # stim = stim1.add(stim2)
-
-
-        pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
-
-        pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
-
-
-        self.field1 = np.hstack((self.field1,pulse_I1))
-        self.field2 = np.hstack((self.field2,pulse_I2))
-
-        # self.stim_vec.append(stim)
-        #
-        # # Last point
-        # self._add_point(base_amp)
-
-
-
-    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.01,**kw):
-
-
-        cycle_time = 1000/burst_freq
-
-
-        n_cycles = int(duration/cycle_time)
-
-        shift_freq = pulse_freq+carrier_freq
-
-
-        base_amp = kw.get("base_amp", self._base_amp)
-
-        delay = kw.get("delay",0)
-        self.delay(delay)
-
-        pulse_width = 1000/pulse_freq
-
-        pulse_time = pulse_width*pulse_number
-
-        break_time = cycle_time - pulse_time
-
-        self.field1 = np.array([])
-        self.field2 = np.array([])
-
-
-        for i in range(n_cycles):
-
-            tvec = Neuron.h.Vector()
-            tvec.indgen(self._cur_t, self._cur_t + pulse_time, step)
-            pulse_tt = np.array(tvec.to_python())
-
-
-            self.time_vec.append(tvec)
-            self.delay(pulse_time)
-
-
-            pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
-            pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
-
-
-
-            self.field1 = np.hstack((self.field1,pulse_I1))
-            self.field2 = np.hstack((self.field2,pulse_I2))
-
-            tvecB = Neuron.h.Vector()
-            tvecB.indgen(self._cur_t, self._cur_t + break_time, step)
-            break_tt = np.array(tvecB.to_python())
-            self.time_vec.append(tvecB)
-            self.delay(break_time)
-
-            break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*break_tt)
-            break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq/1000*break_tt+np.pi)
-
-            self.field1 = np.hstack((self.field1,break_I1))
-            self.field2 = np.hstack((self.field2,break_I2))
-
-
-
-
     def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
         """ Builds a sinusoidal signal.
         Args:
@@ -300,6 +153,39 @@ class SignalSource:
 
         return self
 
+    def add_sines(self, total_duration, freq, freq1=0, step=0.025, **kw):
+        """ Builds a sinusoidal signal from a combination of sines.
+        Args:
+            total_duration: Total duration, in ms
+            freq: The wave frequency, in Hz
+            step: The step, in ms (default: 0.025)
+        """
+
+        base_amp = kw.get("base_amp", self._base_amp)
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + total_duration, step)
+        self.time_vec.append(tvec)
+        self.delay(total_duration)
+
+        stim = Neuron.h.Vector(len(tvec))
+
+        stim.sin(freq, 0.0, step)
+
+        self.stim_vec.append(stim)
+        self._add_point(base_amp)  # Last point
+
+        stim1 = Neuron.h.Vector(len(tvec))
+
+        stim1.sin(freq, 0.0, step)
+
+        self.stim_vec2.append(stim1)
+        self.stim_vec2.append(base_amp)
+
+        return self
+
     def add_sinspec(self, start, dur):
         raise NotImplementedError()
 
@@ -322,58 +208,6 @@ class SignalSource:
             self.add_segment(amp, pulse_duration)
         self._add_point(base_amp)
         return self
-
-    def add_pulses_arbitrary(self, amp, width, **kw):
-
-        """Appends a set of pulsed signals without returning to zero
-           Each pulse is applied for time in list width.
-
-        Args:
-
-          width: List containing the duration of each pulse
-          amp: List containing the amplitude of each pulse
-          **kw: Additional params:
-            - base_amp [default: 0]
-        """
-        # First and last are base_amp
-        base_amp = kw.get("base_amp", self._base_amp)
-        ramp_up_time = kw.get("ramp_up_time", None)
-        ramp_down_time = kw.get("ramp_down_time", None)
-
-        self._add_point(base_amp)
-
-        delay = kw.get("delay",0)
-        self.delay(delay)
-
-        self._add_point((base_amp))
-
-        if ramp_up_time is not None or ramp_down_time is not None:
-            if ramp_up_time is None:
-                ramp_up_time = 0
-            if ramp_down_time is None:
-                ramp_down_time = 0
-
-            const_time = width[0] - (ramp_up_time + ramp_down_time)
-
-            if ramp_up_time > 0:
-                self.add_segment(base_amp, ramp_up_time, amp[0])
-
-            self.add_segment(amp[0], const_time)
-
-            if ramp_down_time > 0:
-                self.add_segment(amp[0], ramp_down_time, base_amp)
-
-        else:
-            self.add_segment(amp[0], width[0])
-
-        if len(amp) > 1:
-            for i in np.arange(1, len(amp)):
-
-                self.add_segment(amp[i], width[i])
-
-        self._add_point(base_amp)
-        return self
-
 
     def add_noise(self, mean, variance, duration, dt=0.5):
         """Adds a noise component to the signal.
@@ -703,7 +537,8 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width, rotationAngles, pulseNumber, stepSize,
+    def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
+                 Ex_1, Ey_1, Ez_1, frequency1,
                  ramp_up_time, ramp_down_time):
 
 
@@ -711,60 +546,32 @@ class ElectrodeSource(SignalSource):
         Creates a new source that injects a signal under e_extracellular
         """
         super().__init__()
-        self.pattern  = pattern
         self.stim_delay = delay
         self.duration = duration
-        self.AmpStart = AmpStart
-        self.frequency = frequency
-        self.width = width
-        self.type = type
+
+        self.Ex_0 = Ex_0
+        self.Ey_0 = Ey_0
+        self.Ez_0 = Ez_0
+        self.frequency0 = frequency0
+        self.Ex_1 = Ex_1
+        self.Ey_1 = Ey_1
+        self.Ez_1 = Ez_1
+        self.frequency1 = frequency1
+
         self._all_sources.append(self)
         self.extracellulars = []
-        self.axon1 = False
-        self.rotation_angles = rotationAngles
-        self.pulse_number = pulseNumber
-        self.stepSize = stepSize
+
         self.ramp_up_time = ramp_up_time
         self.ramp_down_time = ramp_down_time
 
-        if self.type == "Pulse":
+        self.axon1 = False
 
-            self.add_pulses_arbitrary(self.AmpStart, self.width, delay=self.stim_delay,
-                                      ramp_up_time=self.ramp_up_time, ramp_down_time=self.ramp_down_time)
+        self.add_sines( self.duration, self.frequency0,self.frequency1,delay=self.stim_delay, step=self.stepSize)
 
-        elif self.type == "Train":
-
-
-            self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
-
-        elif self.type == "Sinusoid":
-
-
-            self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay, step=self.stepSize)
-
-        elif self.type =='TI':
-
-            carrier_freq = self.frequency[0]
-            pulse_freq = self.frequency[1]
-
-            self.add_ti(self.AmpStart, self.duration, carrier_freq,pulse_freq,delay=self.stim_delay, step=self.stepSize)
-
-        elif self.type == "PulseTI":
-
-            carrier_freq = self.frequency[0]
-            pulse_freq = self.frequency[1]
-            burst_freq = self.frequency[2]
-
-            self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay, step=self.stepSize)
-
-        else:
-            raise Exception("Stimulus type not defined")
 
     def get_soma_position(self,section):
 
         n3d = section.n3d()
-
-
         xpos = []
         ypos = []
         zpos = []
@@ -849,43 +656,28 @@ class ElectrodeSource(SignalSource):
         return pos1
 
 
-    def interp_seg_positions(self,section,x):
-
-
-        n3d = section.n3d()
+    def interp_axon_positions(self,section,x):
 
         xpos = []
         ypos = []
         zpos = []
         lens = []
 
-        if n3d == 0:
 
-            xpos.append(self.soma_position[0])
-            ypos.append(self.soma_position[1])
-            zpos.append(self.soma_position[2])
-            lens.append(0)
+        xpos.append(self.soma_position[0])
+        ypos.append(self.soma_position[1])
+        zpos.append(self.soma_position[2])
+        lens.append(0)
 
-            xpos.append(self.soma_position[0])
-            ypos.append(self.soma_position[1])
-            lens.append(1)
+        xpos.append(self.soma_position[0])
+        ypos.append(self.soma_position[1])
+        lens.append(1)
 
-            if self.axon1 == False:
-                zpos.append(self.soma_position[2]+30)
-                self.axon1 = True
-            else:
-                zpos.append(self.soma_position[2]+60)
-
+        if self.axon1 == False:
+            zpos.append(self.soma_position[2]+30)
+            self.axon1 = True
         else:
-
-            for n in range(n3d):
-
-
-                xpos.append(section.x3d(n))
-                ypos.append(section.y3d(n))
-                zpos.append(section.z3d(n))
-                lens.append(section.arc3d(n)/section.L)
-
+            zpos.append(self.soma_position[2]+60)
 
         fX = interp1d(lens,xpos)
         segX = fX(x)
@@ -899,116 +691,82 @@ class ElectrodeSource(SignalSource):
 
         return segpos
 
-    def rotate(self,segpositions):
 
-        # Rotates segment positions about x, y, or z axis
+    def apply_ramp(self, vector, step=0.025):
 
-        newsegs = segpositions.copy()
+        ramp_up_number = int(self.ramp_up_time/step)
+        ramp_down_number = int(self.ramp_down_number/step)
 
-
-        newsegs -= self.new_soma_pos
-
-        alpha = self.rotation_angles[2]*np.pi/180
-        beta = self.rotation_angles[1]*np.pi/180
-        gamma = self.rotation_angles[0]*np.pi/180
-
-        R = np.array([[np.cos(beta)*np.cos(gamma),np.sin(alpha)*np.sin(beta)*np.cos(gamma)-np.cos(alpha)*np.sin(gamma),np.cos(alpha)*np.sin(beta)*np.cos(gamma)+np.sin(alpha)*np.sin(gamma)],\
-        [np.cos(beta)*np.sin(gamma),np.sin(alpha)*np.sin(beta)*np.sin(gamma)+np.cos(alpha)*np.cos(gamma),np.cos(alpha)*np.sin(beta)*np.sin(gamma)-np.sin(alpha)*np.cos(gamma)],\
-        [-np.sin(beta),np.sin(alpha)*np.cos(beta),np.cos(alpha)*np.cos(beta)]])
-
-        newsegs = np.matmul(R,newsegs)
-
-        newpositions = newsegs + self.new_soma_pos
-
-        return newpositions
-
-    def rotate_about_axis(self, segpositions):
-
-        # Rotates segment positions about arbitrary axis
-
-        newsegs = segpositions.copy()
-
-        newsegs -= self.new_soma_pos
-
-        for i, r in enumerate(self.rotation_angles[:2]):
-            q0 = np.cos(r/2*np.pi/180)
-            q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
-            q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
-            q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
-
-            rotation = [q1,q2,q3,q0]
-
-            finalrotation = R.from_quat(rotation)
-
-            newsegs = finalrotation.apply(newsegs)
-
-        newpositions = newsegs + self.new_soma_pos
-
-        return newpositions
-
-
-    def apply_ramp(self, vector, ramp_up_number, ramp_down_number):
-
-        if ramp_up_number is not None:
+        if ramp_up_number > 0:
             ramp_up = np.linspace(0, 1, ramp_up_number)
-        if ramp_down_number is not None:
-            ramp_down = np.linspace(1, 0, ramp_down_number)
-
-        if ramp_up_number is not None:
             vector[:ramp_up_number] *= ramp_up
-
-        if ramp_down_number is not None:
+        if ramp_down_number > 0:
+            ramp_down = np.linspace(1, 0, ramp_down_number)
             vector[len(vector) - ramp_down_number:] *= ramp_down
 
         return vector
 
-    def attach_to(self, section, x, **kw):
+    def get_scale_factor(self, section, x):
 
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+
+            if int(h.n3d(sec=section)) == 0:
+                segpositions = self.interp_axon_positions(section, x)
+            else:
+                segpositions = self.get_positions(section, x)
+
+        if isinstance(self.offset, np.ndarray):
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+
+        self.new_soma_pos = self.soma_position.copy()
+
+        scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
+
+        return scaleFactor0, scaleFactor1
+
+    def uniform_potentials(self, segpositions):
+
+        # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
+
+        displacementVector = segpositions - self.soma_position
+        displacementVector *= 1e-6 # Converts from um to m
+
+        scaleFactor0 = np.dot(displacementVector, np.array([self.Ex_0,self.Ey_0, self.Ez_0]))
+        scaleFactor0 *= 1e3 # Converts from V to mV
+
+        scaleFactor1 = np.dot(displacementVector, np.array([self.Ex_1, self.Ey_1, self.Ez_1]))
+        scaleFactor1 *= 1e3  # Converts from V to mV
+
+        return scaleFactor0, scaleFactor1
+
+    def attach_to(self, section, x):
 
         self.extracellulars.append(self.time_vec)
 
-        seg = section(x)
-
         section.insert('extracellular')
 
-        ramp_up_number = kw.get("ramp_up_number", None)
-        ramp_down_number = kw.get("ramp_down_number", None)
+        scaleFac0, scaleFac1 = self.get_scale_factor(section, x)
 
-        print('section is '+section.name())
+        stimVec0 = self.stim_vec.to_python()
+        stimVec0 = self.apply_ramp(stimVec0)
+        stimVec0 *= scaleFac0
 
-        scaleFac, newpos = self.get_scale_factor(section, x)
+        stimVec1 = self.stim_vec.to_python()
+        stimVec1 = self.apply_ramp(stimVec1)
+        stimVec1 *= scaleFac1
 
-        if 'TI' in self.type:
+        stimVec = stimVec0 + stimVec1
 
-            field1 = self.field1 * scaleFac[0]
-            field2 = self.fieldfoff2 * scaleFac[-1]
+        segVec = h.Vector()
 
-            field = field1 + field2
+        for v in stimVec:
+            segVec.append(v)
 
-            field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
-
-            segVec = h.Vector()
-            segVec = segVec.from_python(field)
-
-
-        elif self.type == 'Sinusoid':
-
-            segVec = h.Vector()
-
-            newstimVec = self.stim_vec.to_python()
-
-            newstimVec = self.apply_ramp(newstimVec, ramp_up_number, ramp_down_number)
-
-            for v in newstimVec:
-                segVec.append(v)
-
-            segVec.mul(scaleFac[0])
-
-        else:
-
-            segVec = h.Vector()
-            segVec.copy(self.stim_vec)
-            segVec.mul(scaleFac[0])
 
         self.extracellulars.append(segVec)
         self.extracellulars.append(seg.extracellular)
@@ -1017,221 +775,7 @@ class ElectrodeSource(SignalSource):
         out = segVec.play(seg.extracellular._ref_e, self.time_vec)
         self.extracellulars.append(out)
 
-
-
         return segVec.to_python(), self.time_vec.to_python(), newpos
 
-class PointSourceElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time, x, y, z, sigma=0.277):
 
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,
-                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
-
-        # x,y,z positions of electrode, sigma is extracellular conductivity
-        self.x = x
-        self.y = y
-        self.z = z
-        self.sigma = sigma
-
-    def get_scale_factor(self, section, x):
-
-        if 'soma' in section.name():
-
-            segpositions = self.get_soma_position(section)
-
-            self.soma_position = segpositions.copy()
-        else:
-            segpositions = self.interp_seg_positions(section, x)
-
-        if isinstance(self.offset, np.ndarray):
-
-            segpositions -= self.soma_position.copy()
-
-            segpositions += self.offset * 1e3  # offset in mm converted to um
-            self.new_soma_pos = self.offset * 1e3
-
-        else:
-            self.new_soma_pos = self.soma_position.copy()
-
-        distance = np.linalg.norm(np.array([self.x, self.y, self.z])-segpositions)
-
-        scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
-
-        return [scaleFactor], newsegpositions
-
-class ConstantEfield(ElectrodeSource):
-
-    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
-                 offset, constantAxis, somaPosition):
-
-        super().__init__(pattern, delay, type, duration, AmpStart, frequency, width,
-                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
-        self.constantAxis = constantAxis
-        self.soma_position = somaPosition
-        self.offset = offset
-
-
-    def constant_potentials(self, segpositions):
-
-        # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
-
-        if self.rotation_angles is not None:
-            newsegpositions = self.rotate(segpositions)
-
-        else:
-            newsegpositions = segpositions.copy()
-
-        print('newsegpositions are')
-        print(newsegpositions)
-        print('soma position is')
-        print(self.soma_position)
-
-        if self.constantAxis == 'x':
-            outputs = newsegpositions[0] - self.soma_position[0]
-        elif self.constantAxis == 'y':
-            outputs = newsegpositions[1] - self.soma_position[1]
-        else:
-            outputs = newsegpositions[2] - self.soma_position[2]
-
-        outputs *= 1e-6 # Returns value in meters
-
-        print('now newseg is')
-        print(newsegpositions)
-
-        return np.array([outputs]), newsegpositions
-
-    def get_scale_factor(self, section, x):
-
-        if 'soma' in section.name():
-
-            #segpositions = self.get_positions(section,x)
-
-            segpositions = self.get_soma_position(section)
-
-            self.soma_position = segpositions.copy()
-        else:
-
-            if int(h.n3d(sec=section)) == 0:
-                segpositions = self.interp_seg_positions(section, x)
-            else:
-                segpositions = self.get_positions(section,x)
-
-
-
-        if isinstance(self.offset, np.ndarray):
-
-            segpositions += self.offset * 1e3  # offset in mm converted to um
-
-
-        self.new_soma_pos = self.soma_position.copy()
-
-
-
-        scaleFactor, newpositions = self.constant_potentials(segpositions)
-
-        print('scalefactor is')
-
-        print(scaleFactor)
-
-        return scaleFactor * 1e3, newpositions # multiplies scale factor by 1e3 to get potential in mV
-
-class RealElectrode(ElectrodeSource):
-
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
-                 electrode_path, offset, current_applied, soma_position, axes):
-
-
-        super().__init__(pattern, delay, type, duration,  AmpStart,
-                         frequency, width, rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
-
-        self.electrode_path = electrode_path
-        self.offset = offset
-        self.current_applied = current_applied
-        self.soma_position = soma_position
-        self.rotation_axes = axes
-
-    def geth5Dataset(self, h5f, group_name, dataset_name):
-        """
-        Find and get dataset from h5 file.
-        out = geth5Dataset(h5f, group_name, dataset_name)
-        h5f - string - h5 file path and name
-        group_name - string - where to initiate search, '/' for root
-        dataset_name - string - dataset to be found
-        return - numpy array
-        """
-
-        def find_dataset(name):
-            """ Find first object with dataset_name anywhere in the name """
-            if dataset_name in name:
-                return name
-
-        with h5py.File(h5f, 'r') as f:
-            k = f[group_name].visit(find_dataset)
-            return f[group_name + '/' + k][()]
-
-    def interpolate_potentials(self, segpositions):
-
-        if self.rotation_angles is not None:
-            newsegpositions = self.rotate(segpositions)
-
-        else:
-            newsegpositions = segpositions.copy()
-
-        '''
-        path_to_input is the path to the h5 file containing the potential field, outputted from Sim4Life
-        path_to_positions is the path to the output from the position-finding script
-        '''
-
-        outputs = []
-
-        for numFile, file in enumerate(self.electrode_path):
-
-        # Get potential field from output of finite element simulation
-
-            f =  h5py.File(file, 'r')
-            for i in f['FieldGroups']:
-                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
-            pot = self.geth5Dataset(file, tmp, 'comp0')
-            for i in f['Meshes']:
-                tmp = 'Meshes/' + i
-                break
-            x = self.geth5Dataset(file, tmp, 'axis_x')
-            y = self.geth5Dataset(file, tmp, 'axis_y')
-            z = self.geth5Dataset(file, tmp, 'axis_z')
-
-            InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
-
-            out2rat = InterpFcn(newsegpositions*1e-6)
-
-            outputs.append(out2rat[0]/self.current_applied[numFile])
-
-            return np.array(outputs), newsegpositions
-
-    def get_scale_factor(self, section, x):
-
-        if 'soma' in section.name():
-
-            segpositions = self.get_soma_position(section)
-
-            self.soma_position = segpositions.copy()
-        else:
-            segpositions = self.interp_seg_positions(section, x)
-
-        if isinstance(self.offset, np.ndarray):
-
-            segpositions -= self.soma_position.copy()
-
-            segpositions += self.offset * 1e3  # offset in mm converted to um
-            self.new_soma_pos = self.offset * 1e3
-
-        else:
-            self.new_soma_pos = self.soma_position.copy()
-
-        scaleFac, newsegpositions = self.interpolate_potentials(segpositions)
-        scaleFac *= 1e3 # (1e3 to go from V to mV)
-
-        return scaleFac, newsegpositions
