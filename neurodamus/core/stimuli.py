@@ -156,7 +156,7 @@ class SignalSource:
     def add_sines(self, total_duration, freq, freq1=0, step=0.025, **kw):
         """ Builds a sinusoidal signal from a combination of sines.
         Args:
-            total_duration: Total duration, in ms
+            total_duration: Total duration, in ms, including ramp-up and ramp-down periods
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
@@ -549,27 +549,31 @@ class ElectrodeSource(SignalSource):
         self.stim_delay = delay
         self.duration = duration
 
-        self.Ex_0 = Ex_0
-        self.Ey_0 = Ey_0
-        self.Ez_0 = Ez_0
-        self.frequency0 = frequency0
-        self.Ex_1 = Ex_1
-        self.Ey_1 = Ey_1
-        self.Ez_1 = Ez_1
-        self.frequency1 = frequency1
+        self.Ex_0 = Ex_0 # x-component of the first E field (in V/m)
+        self.Ey_0 = Ey_0 # y-component of the first E field (in V/m)
+        self.Ez_0 = Ez_0 # z-component of the first E field (in V/m)
+        self.frequency0 = frequency0 # Temporal frequency of the first E field (in Hz)
+        self.Ex_1 = Ex_1 # x-component of the second E field (in V/m)
+        self.Ey_1 = Ey_1 # y-component of the second E field (in V/m)
+        self.Ez_1 = Ez_1 # z-component of the second E field (in V/m)
+        self.frequency1 = frequency1 # Temporal frequency of the second E field (in Hz)
 
         self._all_sources.append(self)
         self.extracellulars = []
 
-        self.ramp_up_time = ramp_up_time
-        self.ramp_down_time = ramp_down_time
+        self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
+        self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
 
-        self.axon1 = False
+        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
 
-        self.add_sines( self.duration, self.frequency0,self.frequency1,delay=self.stim_delay, step=self.stepSize)
+        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay, step=self.stepSize) # Defines the temporal profile of the signal
 
 
     def get_soma_position(self,section):
+
+        '''
+        If the given segment is a soma, then we calculate its position by averaging all of the 3d points associated with it
+        '''
 
         n3d = section.n3d()
         xpos = []
@@ -658,27 +662,34 @@ class ElectrodeSource(SignalSource):
 
     def interp_axon_positions(self,section,x):
 
+        '''
+        If the given section is an axon, then we need to guess where it is located
+        '''
+
+        # Specifies list of points for each Cartesian coordinate
         xpos = []
         ypos = []
         zpos = []
         lens = []
 
-
+        ### Adds soma position to the list of coordinates
         xpos.append(self.soma_position[0])
         ypos.append(self.soma_position[1])
         zpos.append(self.soma_position[2])
         lens.append(0)
 
+        # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
         xpos.append(self.soma_position[0])
         ypos.append(self.soma_position[1])
         lens.append(1)
 
         if self.axon1 == False:
-            zpos.append(self.soma_position[2]+30)
+            zpos.append(self.soma_position[2]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
             self.axon1 = True
         else:
-            zpos.append(self.soma_position[2]+60)
+            zpos.append(self.soma_position[2]+60) # If it is the second axonal segment, then it is displaced by 60 um
 
+        # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
         segX = fX(x)
         fY = interp1d(lens,ypos)
@@ -694,8 +705,8 @@ class ElectrodeSource(SignalSource):
 
     def apply_ramp(self, vector, step=0.025):
 
-        ramp_up_number = int(self.ramp_up_time/step)
-        ramp_down_number = int(self.ramp_down_number/step)
+        ramp_up_number = int(self.ramp_up_time/step) # Number of time points during the ramp-up window
+        ramp_down_number = int(self.ramp_down_number/step) # Number of time points during the ramp-down window
 
         if ramp_up_number > 0:
             ramp_up = np.linspace(0, 1, ramp_up_number)
@@ -715,7 +726,7 @@ class ElectrodeSource(SignalSource):
             self.soma_position = segpositions.copy()
         else:
 
-            if int(h.n3d(sec=section)) == 0:
+            if int(h.n3d(sec=section)) == 0: # Axonal segments don't have 3d points associated, so we guess
                 segpositions = self.interp_axon_positions(section, x)
             else:
                 segpositions = self.get_positions(section, x)
@@ -750,17 +761,17 @@ class ElectrodeSource(SignalSource):
 
         section.insert('extracellular')
 
-        scaleFac0, scaleFac1 = self.get_scale_factor(section, x)
+        scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
         stimVec0 = self.stim_vec.to_python()
-        stimVec0 = self.apply_ramp(stimVec0)
-        stimVec0 *= scaleFac0
+        stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
+        stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
 
         stimVec1 = self.stim_vec.to_python()
-        stimVec1 = self.apply_ramp(stimVec1)
-        stimVec1 *= scaleFac1
+        stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
+        stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
 
-        stimVec = stimVec0 + stimVec1
+        stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
 
         segVec = h.Vector()
 

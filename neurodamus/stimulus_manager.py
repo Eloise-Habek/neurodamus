@@ -791,7 +791,9 @@ class SEClamp(BaseStim):
 @StimulusManager.register_type
 class Extracellular(BaseStim):
     """
-    Extracellular stimulus
+    Extracellular stimulus. Currently, the stimulus is either a spatially-uniform E field
+    with a sinusoidal time course (potentially with a ramp-up and ramp-down period)
+    or the sum of two such E fields
     """
     stimCount = 0  # global count for seeding
 
