@@ -22,7 +22,7 @@ import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 from .core.configuration import SimConfig
-from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode, ConstantEfield
+from .core.stimuli import CurrentSource, ConductanceSource, ElectrodeSource 
 from .core import random
 import numpy as np
 from neuron import h
