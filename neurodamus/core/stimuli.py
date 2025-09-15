@@ -505,3 +505,257 @@ class ConductanceSource(SignalSource):
 # and then vector.play() it into the currently accessed compartment
 #
 # TODO: 1. more stimulus primitives than step. 2. a dt of 0.1 ms is hardcoded. make this flexible!
+
+class ElectrodeSource(SignalSource):
+    _all_sources = []
+
+    def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
+                 Ex_1, Ey_1, Ez_1, frequency1,
+                 ramp_up_time, ramp_down_time):
+
+
+        """
+        Creates a new source that injects a signal under e_extracellular
+        """
+        super().__init__()
+        self.stim_delay = delay
+        self.duration = duration
+
+        self.Ex_0 = Ex_0 # x-component of the first E field (in V/m)
+        self.Ey_0 = Ey_0 # y-component of the first E field (in V/m)
+        self.Ez_0 = Ez_0 # z-component of the first E field (in V/m)
+        self.frequency0 = frequency0 # Temporal frequency of the first E field (in Hz)
+        self.Ex_1 = Ex_1 # x-component of the second E field (in V/m)
+        self.Ey_1 = Ey_1 # y-component of the second E field (in V/m)
+        self.Ez_1 = Ez_1 # z-component of the second E field (in V/m)
+        self.frequency1 = frequency1 # Temporal frequency of the second E field (in Hz)
+
+        self._all_sources.append(self)
+        self.extracellulars = []
+
+        self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
+        self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
+
+        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
+
+        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay, step=self.stepSize) # Defines the temporal profile of the signal
+
+
+    def get_soma_position(self,section):
+
+        '''
+        If the given segment is a soma, then we calculate its position by averaging all of the 3d points associated with it
+        '''
+
+        n3d = section.n3d()
+        xpos = []
+        ypos = []
+        zpos = []
+
+        for n in range(n3d):
+            xpos.append(section.x3d(n))
+            ypos.append(section.y3d(n))
+            zpos.append(section.z3d(n))
+
+        x = np.mean(xpos)
+        y = np.mean(ypos)
+        z = np.mean(zpos)
+
+        print(np.array([x,y,z]),flush=True)
+
+        return np.array([x,y,z])
+
+    def grindaway(self,hsection):
+        """Grindaway"""
+
+        # get the data for the section
+        n_segments = int(h.n3d(sec=hsection))
+        n_comps = hsection.nseg
+
+        xs = np.zeros(n_segments)
+        ys = np.zeros(n_segments)
+        zs = np.zeros(n_segments)
+        lengths = np.zeros(n_segments)
+        for index in range(0, n_segments):
+            xs[index] = h.x3d(index, sec=hsection)
+            ys[index] = h.y3d(index, sec=hsection)
+            zs[index] = h.z3d(index, sec=hsection)
+            lengths[index] = h.arc3d(index, sec=hsection)
+
+        # to use Vector class's .interpolate()
+        # must first scale the independent variable
+        # i.e. normalize length along centroid
+        lengths /= (lengths[-1])
+
+        # initialize the destination "independent" vector
+        # range = np.array(n_comps+2)
+        comp_range = np.arange(0, n_comps + 2) / n_comps - \
+            1.0 / (2 * n_comps)
+        comp_range[0] = 0
+        comp_range[-1] = 1
+
+        # length contains the normalized distances of the pt3d points
+        # along the centroid of the section.  These are spaced at
+        # irregular intervals.
+        # range contains the normalized distances of the nodes along the
+        # centroid of the section.  These are spaced at regular intervals.
+        # Ready to interpolate.
+
+        xs_interp = np.interp(comp_range, lengths, xs)
+        ys_interp = np.interp(comp_range, lengths, ys)
+        zs_interp = np.interp(comp_range, lengths, zs)
+
+        return xs_interp, ys_interp, zs_interp
+
+    def get_positions(self,
+            hsection1=None,
+            location1=None):
+        """Gets position on a section
+
+        Parameters
+        ----------
+
+        hsection1 : hoc section
+                    First section
+        location1 : float
+                    range x along hsection1
+        """
+
+        xs_interp1, ys_interp1, zs_interp1 = self.grindaway(hsection1)
+
+        x1 = xs_interp1[int(np.floor((len(xs_interp1) - 1) * location1))]
+        y1 = ys_interp1[int(np.floor((len(ys_interp1) - 1) * location1))]
+        z1 = zs_interp1[int(np.floor((len(zs_interp1) - 1) * location1))]
+
+        pos1 = np.array([x1,y1,z1])
+
+        return pos1
+
+
+    def interp_axon_positions(self,section,x):
+
+        '''
+        If the given section is an axon, then we need to guess where it is located
+        '''
+
+        # Specifies list of points for each Cartesian coordinate
+        xpos = []
+        ypos = []
+        zpos = []
+        lens = []
+
+        ### Adds soma position to the list of coordinates
+        xpos.append(self.soma_position[0])
+        ypos.append(self.soma_position[1])
+        zpos.append(self.soma_position[2])
+        lens.append(0)
+
+        # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
+        xpos.append(self.soma_position[0])
+        ypos.append(self.soma_position[1])
+        lens.append(1)
+
+        if self.axon1 == False:
+            zpos.append(self.soma_position[2]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
+            self.axon1 = True
+        else:
+            zpos.append(self.soma_position[2]+60) # If it is the second axonal segment, then it is displaced by 60 um
+
+        # Then, we interpolate the coordinates for the given location x along the segment
+        fX = interp1d(lens,xpos)
+        segX = fX(x)
+        fY = interp1d(lens,ypos)
+        segY = fY(x)
+        fZ = interp1d(lens,zpos)
+        segZ = fZ(x)
+
+        segpos = np.array([segX,segY,segZ])
+
+
+        return segpos
+
+
+    def apply_ramp(self, vector, step=0.025):
+
+        ramp_up_number = int(self.ramp_up_time/step) # Number of time points during the ramp-up window
+        ramp_down_number = int(self.ramp_down_number/step) # Number of time points during the ramp-down window
+
+        if ramp_up_number > 0:
+            ramp_up = np.linspace(0, 1, ramp_up_number)
+            vector[:ramp_up_number] *= ramp_up
+        if ramp_down_number > 0:
+            ramp_down = np.linspace(1, 0, ramp_down_number)
+            vector[len(vector) - ramp_down_number:] *= ramp_down
+
+        return vector
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+
+            if int(h.n3d(sec=section)) == 0: # Axonal segments don't have 3d points associated, so we guess
+                segpositions = self.interp_axon_positions(section, x)
+            else:
+                segpositions = self.get_positions(section, x)
+
+        if isinstance(self.offset, np.ndarray):
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+
+        self.new_soma_pos = self.soma_position.copy()
+
+        scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
+
+        return scaleFactor0, scaleFactor1
+
+    def uniform_potentials(self, segpositions):
+
+        # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
+
+        displacementVector = segpositions - self.soma_position
+        displacementVector *= 1e-6 # Converts from um to m
+
+        scaleFactor0 = np.dot(displacementVector, np.array([self.Ex_0,self.Ey_0, self.Ez_0]))
+        scaleFactor0 *= 1e3 # Converts from V to mV
+
+        scaleFactor1 = np.dot(displacementVector, np.array([self.Ex_1, self.Ey_1, self.Ez_1]))
+        scaleFactor1 *= 1e3  # Converts from V to mV
+
+        return scaleFactor0, scaleFactor1
+
+    def attach_to(self, section, x):
+
+        self.extracellulars.append(self.time_vec)
+
+        section.insert('extracellular')
+
+        scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
+
+        stimVec0 = self.stim_vec.to_python()
+        stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
+        stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
+
+        stimVec1 = self.stim_vec.to_python()
+        stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
+        stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
+
+        stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
+
+        segVec = h.Vector()
+
+        for v in stimVec:
+            segVec.append(v)
+
+
+        self.extracellulars.append(segVec)
+        self.extracellulars.append(seg.extracellular)
+        self.extracellulars.append(seg.extracellular.e)
+
+        out = segVec.play(seg.extracellular._ref_e, self.time_vec)
+        self.extracellulars.append(out)
+
+        return segVec.to_python(), self.time_vec.to_python(), newpos

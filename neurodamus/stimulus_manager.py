@@ -21,7 +21,7 @@ import logging
 
 from .core import NeuronWrapper as Nd, random
 from .core.configuration import ConfigurationError, SimConfig
-from .core.stimuli import ConductanceSource, CurrentSource
+from .core.stimuli import ConductanceSource, CurrentSource, ElectrodeSource
 from .utils.logging import log_verbose
 
 
@@ -777,3 +777,113 @@ class SEClamp(BaseStim):
         self.rs = float(stim_info.get("RS", 0.01))  # series resistance [MOhm]
         if self.delay > 0:
             logging.warning("%s ignores delay", self.__class__.__name__)
+
+@StimulusManager.register_type
+class Extracellular(BaseStim):
+    """
+    Extracellular stimulus. Currently, the stimulus is either a spatially-uniform E field
+    with a sinusoidal time course (potentially with a ramp-up and ramp-down period)
+    or the sum of two such E fields
+    """
+    stimCount = 0  # global count for seeding
+
+    IsPythonOnly = True
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+
+        super().__init__(target, stim_info, cell_manager)
+
+        if not self.parse_check_all_parameters(stim_info):
+            return None  # nothing to do, stim is a no-op
+
+        self.stimList = []  # sources go here
+
+        tpoints = target.getPointList(cell_manager)
+
+        posList = {}
+
+        fields = {}
+
+        times = []
+
+        for tpoint_list in tpoints:
+
+            for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                x = tpoint_list.x[sec_id]
+
+                # skip sections not in this split
+                if not sc.exists():
+                    continue
+
+                # inject Extracellular signal
+
+                es = ElectrodeSource(self.delay, self.duration,
+                                    self.Ex_0, self.Ey_0, self.Ez_0, self.frequency0,
+                                    self.Ex_1, self.Ey_1, self.Ez_1, self.frequency1,
+                                    self.ramp_up_time, self.ramp_down_time)
+
+                phi, time, pos = es.attach_to(sc.sec, x)
+
+
+                posList[sc.sec.name()+'('+str(x)+')'] = pos
+                fields[sc.sec.name()+'('+str(x)+')'] = phi
+                times.append(time)
+
+
+                self.stimList.append(es)  # save source
+
+        Extracellular.stimCount += 1  # increment global count
+
+    def parse_check_all_parameters(self, stim_info: dict):
+
+        if "Ex_0" not in stim_info:
+            raise Exception("Extracellular stimulus must have 'Ex_0' parameter")
+        else:
+            self.Ex_0 = stim_info["Ex_0"]
+        if "Ey_0" not in stim_info:
+            raise Exception("Extracellular stimulus must have 'Ey_0' parameter")
+        else:
+            self.Ey_0 = stim_info["Ey_0"]
+        if "Ez_0" not in stim_info:
+            raise Exception("Extracellular stimulus must have 'Ez_0' parameter")
+        else:
+            self.Ez_0 = stim_info["Ez_0"]
+        if "frequency0" not in stim_info:
+            raise Warning("frequency0 will be assumed to be zero")
+            self.frequency0 = 0
+        else:
+            self.frequency0 = stim_info["frequency0"]
+
+        if "Ex_1" in stim_info or "Ey_1" in stim_info or "Ez_1" in stim_info:
+            if not "Ex_1" in stim_info and "Ey_1" in stim_info and "Ez_1" in stim_info:
+                raise Exception("If two fields are to be used, Ex_1, Ey_1, Ez_1 must be defined")
+            else:
+                self.Ex_1 = stim_info["Ex_1"]
+                self.Ey_1 = stim_info["Ey_1"]
+                self.Ez_1 = stim_info["Ez_1"]
+        else:
+            self.Ex_1 = 0
+            self.Ey_1 = 0
+            self.Ez_1 = 0
+
+        if "freqency1" not in stim_info:
+            raise Warning("freqency1 will be assumed to be zero")
+            self.frequency1 = 0
+        else:
+            self.frequency1 = stim_info["freqency1"]
+
+        if "ramp_up_time" not in stim_info:
+            self.ramp_up_time = 0
+        else:
+            self.ramp_up_time = stim_info["ramp_up_time"]
+            if self.ramp_up_time < 0:
+                raise Exception("ramp_up_time must be positive")
+        if "ramp_down_time" in stim_info:
+            self.ramp_down_time = stim_info["ramp_down_time"]
+            if self.ramp_down_time < 0:
+                raise Exception("ramp_down_time must be positive")
+        else:
+            self.ramp_down_time = 0
+
+        return True
