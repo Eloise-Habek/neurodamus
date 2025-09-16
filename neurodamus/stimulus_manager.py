@@ -830,7 +830,7 @@ class Extracellular(BaseStim):
 
                 phi, time = es.attach_to(sc.sec, x)
 
-                somaPosition = es.somaPosition
+                somaPosition = es.soma_position
 
                 #posList[sc.sec.name()+'('+str(x)+')'] = pos
                 fields[sc.sec.name()+'('+str(x)+')'] = phi
