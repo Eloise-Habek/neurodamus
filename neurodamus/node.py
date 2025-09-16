@@ -758,8 +758,7 @@ class Node:
         self._stim_manager = StimulusManager(self._target_manager)
 
         for stim in SimConfig.stimuli:
-            if stim.get("Mode") == "Extracellular":
-                raise ConfigurationError("input_type extracellular_stimulation is not supported")
+
             target_spec = TargetSpec(stim.get("Target"))
             stim_name = stim["Name"]
             stim_pattern = stim["Pattern"]
