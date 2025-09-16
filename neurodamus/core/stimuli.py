@@ -137,6 +137,39 @@ class SignalSource:
         self._add_point(base_amp)  # Last point
         return self
 
+    def add_sines(self, total_duration, freq, freq1=0, step=0.025, **kw):
+        """ Builds a sinusoidal signal from a combination of sines.
+        Args:
+            total_duration: Total duration, in ms, including ramp-up and ramp-down periods
+            freq: The wave frequency, in Hz
+            step: The step, in ms (default: 0.025)
+        """
+
+        base_amp = kw.get("base_amp", self._base_amp)
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + total_duration, step)
+        self.time_vec.append(tvec)
+        self.delay(total_duration)
+
+        stim = Neuron.h.Vector(len(tvec))
+
+        stim.sin(freq, 0.0, step)
+
+        self.stim_vec.append(stim)
+        self._add_point(base_amp)  # Last point
+
+        stim1 = Neuron.h.Vector(len(tvec))
+
+        stim1.sin(freq, 0.0, step)
+
+        self.stim_vec2.append(stim1)
+        self.stim_vec2.append(base_amp)
+
+        return self
+
     def add_noise(self, mean, variance, duration, dt=0.5):
         """Adds a noise component to the signal."""
         rng = self._rng or RNG()  # Creates a default RNG
