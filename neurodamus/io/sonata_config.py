@@ -292,15 +292,7 @@ class SonataConfig:
             "series_resistance": "RS",
             "node_set": "Target",
             "sd_percent": "SDPercent",
-            "relative_skew": "RelativeSkew",
-            "Ex_0":"Ex_0",
-            "Ex_1": "Ex_1",
-            "Ey_0": "Ey_0",
-            "Ey_1": "Ey_1",
-            "Ez_0": "Ez_0",
-            "Ez_1": "Ez_1",
-            "frequency_0": "frequency_0",
-            "frequency_1": "frequency_1"
+            "relative_skew": "RelativeSkew"
         }
         input_type_translation = {
             "spikes": "Current",
@@ -326,7 +318,7 @@ class SonataConfig:
                 stimulus["Ex_0"]=0
                 stimulus["Ey_0"]=0
                 stimulus["Ez_0"]=stimulus["AmpStart"]
-                stimulus["frequency_0"] = stimulus["Frequency"]
+                stimulus["frequency0"] = stimulus["Frequency"]
             stimulus["Name"] = name
 
             stimuli.append(stimulus)
