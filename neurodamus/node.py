@@ -770,7 +770,6 @@ class Node:
                 stim_pattern,
                 target_spec,
             )
-            print(stim)
             self._stim_manager.interpret(target_spec, stim)
 
     # -

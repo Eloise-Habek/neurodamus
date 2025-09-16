@@ -315,6 +315,18 @@ class SonataConfig:
             )
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
             stimulus["Name"] = name
+            if stimulus["Mode"]=='Extracellular':
+                print(self._sim_conf.input(name))
+                stimulus["Ex_0"]=self._sim_conf.input(name)['Ex_0']
+                stimulus["Ey_0"] = self._sim_conf.input(name)['Ey_0']
+                stimulus["Ez_0"] = self._sim_conf.input(name)['Ez_0']
+
+                stimulus["Ex_1"] = self._sim_conf.input(name)['Ex_1']
+                stimulus["Ey_1"] = self._sim_conf.input(name)['Ey_1']
+                stimulus["Ez_1"] = self._sim_conf.input(name)['Ez_1']
+
+                stimulus["frequency_0"] = self._sim_conf.input(name)['frequency_0']
+                stimulus["frequency_1"] = self._sim_conf.input(name)['frequency_1']
             stimuli.append(stimulus)
 
         return stimuli
