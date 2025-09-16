@@ -17,6 +17,7 @@ class SignalSource:
         """
         h = Nd.h
         self.stim_vec = h.Vector()
+        self.stim_vec2 = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
         self._base_amp = base_amp
@@ -772,7 +773,7 @@ class ElectrodeSource(SignalSource):
         stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
         stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
 
-        stimVec1 = self.stim_vec.to_python()
+        stimVec1 = self.stim_vec2.to_python()
         stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
         stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
 
