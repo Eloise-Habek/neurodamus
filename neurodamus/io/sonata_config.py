@@ -322,6 +322,12 @@ class SonataConfig:
                 stimulus["Pattern"], snake_to_camel(stimulus["Pattern"])
             )
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
+            if stimulus["Mode"]=="Extracellular":
+                stimulus["Ex_0"]=0
+                stimulus["Ey_0"]=0
+                stimulus["Ez_0"]=stimulus["AmpStart"]
+                stimulus["frequency_0"] = stimulus["frequency"]
+                stimulus["frequency_0"] = stimulus["frequency"]
             stimulus["Name"] = name
 
             stimuli.append(stimulus)
@@ -391,9 +397,7 @@ class SonataConfig:
     @staticmethod
     def _translate_dict(item_translation, libsonata_obj) -> dict:
         """Translate SONATA/libsonata key names (snake_case) to Neurodamus internal paramters"""
-        print(dir(libsonata_obj))
         for x in dir(libsonata_obj):
-            print(x)
         attrs = [
             x
             for x in dir(libsonata_obj)
@@ -401,7 +405,6 @@ class SonataConfig:
         ]
         result = {}
         for att in attrs:
-            print(att)
             key = item_translation.get(att, snake_to_camel(att))
             parsed_value = getattr(libsonata_obj, att)
             if parsed_value is not None:
