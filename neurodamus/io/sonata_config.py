@@ -322,6 +322,7 @@ class SonataConfig:
                 stimulus["Pattern"], snake_to_camel(stimulus["Pattern"])
             )
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
+            print(stimulus.keys())
             if stimulus["Mode"]=="Extracellular":
                 stimulus["Ex_0"]=0
                 stimulus["Ey_0"]=0
