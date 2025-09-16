@@ -6,6 +6,7 @@ from .random import RNG, gamma
 from neurodamus.core import NeuronWrapper as Nd
 from . import Neuron
 import numpy as np
+from neuron import h
 
 class SignalSource:
     def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
