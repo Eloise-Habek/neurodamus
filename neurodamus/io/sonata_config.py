@@ -314,6 +314,7 @@ class SonataConfig:
                 stimulus["Pattern"], snake_to_camel(stimulus["Pattern"])
             )
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
+            print(stimulus.keys())
             if stimulus["Mode"]=="Extracellular":
                 stimulus["Ex_0"]=stimulus["AmpMean"]
                 stimulus["Ey_0"]=stimulus["MeanPercent"]
@@ -323,7 +324,7 @@ class SonataConfig:
                 stimulus["Ex_1"] = stimulus["AmpVar"]
                 stimulus["Ey_1"] = stimulus["SdPercent"]
                 stimulus["Ez_1"] = stimulus["RelativeSkew"]
-                stimulus["frequency1"] = stimulus["Rate"]
+                stimulus["frequency1"] = stimulus["Sigma"]
 
                 stimulus["ramp_up_time"]=stimulus["RiseTime"]
                 stimulus["ramp_down_time"] = stimulus["DecayTime"]
