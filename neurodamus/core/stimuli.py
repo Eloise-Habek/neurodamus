@@ -778,6 +778,8 @@ class ElectrodeSource(SignalSource):
 
         stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
 
+        print(stimVec)
+
         segVec = h.Vector()
 
         for v in stimVec:
