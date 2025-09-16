@@ -800,7 +800,7 @@ class Extracellular(BaseStim):
 
         self.stimList = []  # sources go here
 
-        tpoints = target.get_point_list(cell_manager,sections='all')
+        tpoints = target.get_point_list(cell_manager,'all')
 
         print(tpoints)
 
