@@ -327,7 +327,6 @@ class SonataConfig:
                 stimulus["Ey_0"]=0
                 stimulus["Ez_0"]=stimulus["AmpStart"]
                 stimulus["frequency_0"] = stimulus["frequency"]
-                stimulus["frequency_0"] = stimulus["frequency"]
             stimulus["Name"] = name
 
             stimuli.append(stimulus)
@@ -397,7 +396,6 @@ class SonataConfig:
     @staticmethod
     def _translate_dict(item_translation, libsonata_obj) -> dict:
         """Translate SONATA/libsonata key names (snake_case) to Neurodamus internal paramters"""
-        for x in dir(libsonata_obj):
         attrs = [
             x
             for x in dir(libsonata_obj)
