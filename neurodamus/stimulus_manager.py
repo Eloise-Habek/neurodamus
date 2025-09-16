@@ -825,10 +825,10 @@ class Extracellular(BaseStim):
                                     self.Ex_1, self.Ey_1, self.Ez_1, self.frequency1,
                                     self.ramp_up_time, self.ramp_down_time)
 
-                phi, time, pos = es.attach_to(sc.sec, x)
+                phi, time = es.attach_to(sc.sec, x)
 
 
-                posList[sc.sec.name()+'('+str(x)+')'] = pos
+                #posList[sc.sec.name()+'('+str(x)+')'] = pos
                 fields[sc.sec.name()+'('+str(x)+')'] = phi
                 times.append(time)
 
