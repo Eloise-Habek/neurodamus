@@ -518,6 +518,12 @@ def _stimulus_params(config: _SimConfig):
         "Variance",
         "Voltage",
         "RS",
+        "Ex_0",
+        "Ex_1",
+        "Ey_0",
+        "Ey_1",
+        "Ez_0",
+        "Ez_1"
     )
     non_negatives = (
         "Duration",
@@ -529,9 +535,11 @@ def _stimulus_params(config: _SimConfig):
         "Weight",
         "NumOfSynapses",
         "Seed",
+        "frequency_0",
+        "frequency_1"
     )
     valid_values = {
-        "Mode": ("Current", "Voltage", "Conductance", "spikes"),
+        "Mode": ("Current", "Voltage", "Conductance", "spikes","Extracellular"),
         "Pattern": {
             "Hyperpolarizing",
             "Linear",
