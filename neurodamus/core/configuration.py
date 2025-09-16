@@ -558,6 +558,7 @@ def _stimulus_params(config: _SimConfig):
             "ReplayVoltageTrace",
             "AbsoluteShotNoise",
             "RelativeOrnsteinUhlenbeck",
+            "Extracellular"
         },
     }
     deprecated_values = {"Pattern": ("NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")}
