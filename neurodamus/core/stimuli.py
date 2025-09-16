@@ -765,8 +765,9 @@ class ElectrodeSource(SignalSource):
         seg = section(0.5)
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
-
+        print('scaleFaco0 is ' + str(scaleFac0))
         stimVec0 = self.stim_vec.to_python()
+        print('max vec is ' + str(np.max(np.abs(stimVec0))))
         stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
         stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
 
@@ -776,7 +777,6 @@ class ElectrodeSource(SignalSource):
 
         stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
 
-        print(np.max(np.abs(stimVec)))
 
         segVec = h.Vector()
 
