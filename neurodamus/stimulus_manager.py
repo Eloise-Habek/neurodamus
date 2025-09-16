@@ -802,7 +802,6 @@ class Extracellular(BaseStim):
 
         tpoints = target.get_point_list(cell_manager,SectionType.ALL)
 
-        print(tpoints)
 
         posList = {}
 
@@ -812,11 +811,11 @@ class Extracellular(BaseStim):
 
         for tpoint_list in tpoints:
 
-            print(tpoint_list)
+            somaPosition = None
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
-                print(sec_id)
+                print(sec_id.name)
 
                 x = tpoint_list.x[sec_id]
 
@@ -829,10 +828,11 @@ class Extracellular(BaseStim):
                 es = ElectrodeSource(self.delay, self.duration,
                                     self.Ex_0, self.Ey_0, self.Ez_0, self.frequency0,
                                     self.Ex_1, self.Ey_1, self.Ez_1, self.frequency1,
-                                    self.ramp_up_time, self.ramp_down_time)
+                                    self.ramp_up_time, self.ramp_down_time,somaPosition)
 
                 phi, time = es.attach_to(sc.sec, x)
 
+                somaPosition = es.somaPosition
 
                 #posList[sc.sec.name()+'('+str(x)+')'] = pos
                 fields[sc.sec.name()+'('+str(x)+')'] = phi

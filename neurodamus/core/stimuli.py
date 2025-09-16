@@ -547,7 +547,7 @@ class ElectrodeSource(SignalSource):
 
     def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
                  Ex_1, Ey_1, Ez_1, frequency1,
-                 ramp_up_time, ramp_down_time):
+                 ramp_up_time, ramp_down_time,somaPosition):
 
 
         """
@@ -576,6 +576,7 @@ class ElectrodeSource(SignalSource):
 
         self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
+        self.soma_position = somaPosition
 
     def get_soma_position(self,section):
 
