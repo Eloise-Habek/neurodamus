@@ -51,6 +51,8 @@ class StimulusManager:
         target = self._target_manager.get_target(target_spec)
         log_verbose("Interpret stimulus")
         cell_manager = self._target_manager._cell_manager
+        if stim_info["input_type"]=='extracellular_stimulation': # Workaround since libsonata does not accept "Extracellular" as a module
+            stim_t = self._stim_types["Extracellular"]
         stim = stim_t(target, stim_info, cell_manager)
         self._stimulus.append(stim)
 
