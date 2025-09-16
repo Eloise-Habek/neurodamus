@@ -852,7 +852,7 @@ class Extracellular(BaseStim):
         else:
             self.Ez_0 = stim_info["Ez_0"]
         if "frequency0" not in stim_info:
-            raise Warning("frequency0 will be assumed to be zero")
+            #raise Warning("frequency0 will be assumed to be zero")
             self.frequency0 = 0
         else:
             self.frequency0 = stim_info["frequency0"]
@@ -870,7 +870,7 @@ class Extracellular(BaseStim):
             self.Ez_1 = 0
 
         if "freqency1" not in stim_info:
-            raise Warning("freqency1 will be assumed to be zero")
+            #raise Warning("freqency1 will be assumed to be zero")
             self.frequency1 = 0
         else:
             self.frequency1 = stim_info["freqency1"]
