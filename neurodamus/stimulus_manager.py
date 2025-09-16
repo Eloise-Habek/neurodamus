@@ -23,7 +23,7 @@ from .core import NeuronWrapper as Nd, random
 from .core.configuration import ConfigurationError, SimConfig
 from .core.stimuli import ConductanceSource, CurrentSource, ElectrodeSource
 from .utils.logging import log_verbose
-
+from .report_parameters import SectionType
 
 class StimulusManager:
     """A manager for synaptic artificial Stimulus.
@@ -800,7 +800,7 @@ class Extracellular(BaseStim):
 
         self.stimList = []  # sources go here
 
-        tpoints = target.get_point_list(cell_manager,0)
+        tpoints = target.get_point_list(cell_manager,SectionType.ALL)
 
         print(tpoints)
 
