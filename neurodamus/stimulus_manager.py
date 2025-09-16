@@ -802,6 +802,8 @@ class Extracellular(BaseStim):
 
         tpoints = target.get_point_list(cell_manager)
 
+        print(tpoints)
+
         posList = {}
 
         fields = {}
@@ -810,7 +812,11 @@ class Extracellular(BaseStim):
 
         for tpoint_list in tpoints:
 
+            print(tpoint_list)
+
             for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                print(sec_id)
 
                 x = tpoint_list.x[sec_id]
 
