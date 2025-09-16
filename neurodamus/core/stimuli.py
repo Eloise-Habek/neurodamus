@@ -713,7 +713,7 @@ class ElectrodeSource(SignalSource):
     def apply_ramp(self, vector, step=0.025):
 
         ramp_up_number = int(self.ramp_up_time/step) # Number of time points during the ramp-up window
-        ramp_down_number = int(self.ramp_down_number/step) # Number of time points during the ramp-down window
+        ramp_down_number = int(self.ramp_down_time/step) # Number of time points during the ramp-down window
 
         if ramp_up_number > 0:
             ramp_up = np.linspace(0, 1, ramp_up_number)
