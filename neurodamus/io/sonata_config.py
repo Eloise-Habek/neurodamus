@@ -323,7 +323,7 @@ class SonataConfig:
 
                 stimulus["Ex_1"] = stimulus["RelativeSkew"]
                 stimulus["Ey_1"] = stimulus["Reversal"]
-                stimulus["Ez_1"] = stimulus["RandomSeed"]
+                stimulus["Ez_1"] = stimulus["Seed"]
                 stimulus["frequency1"] = stimulus["SDPercent"]
 
             stimulus["Name"] = name
