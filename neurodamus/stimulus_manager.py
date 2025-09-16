@@ -815,8 +815,6 @@ class Extracellular(BaseStim):
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
-                print(sec_id.name)
-
                 x = tpoint_list.x[sec_id]
 
                 # skip sections not in this split
