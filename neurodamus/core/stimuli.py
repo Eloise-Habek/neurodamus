@@ -738,11 +738,6 @@ class ElectrodeSource(SignalSource):
             else:
                 segpositions = self.get_positions(section, x)
 
-        if isinstance(self.offset, np.ndarray):
-            segpositions += self.offset * 1e3  # offset in mm converted to um
-
-        self.new_soma_pos = self.soma_position.copy()
-
         scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
 
         return scaleFactor0, scaleFactor1
