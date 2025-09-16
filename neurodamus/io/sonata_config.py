@@ -316,18 +316,16 @@ class SonataConfig:
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
             print(stimulus.keys())
             if stimulus["Mode"]=="Extracellular":
-                stimulus["Ex_0"]=stimulus["AmpMean"]
-                stimulus["Ey_0"]=stimulus["MeanPercent"]
-                stimulus["Ez_0"]=stimulus["Mean"]
+                stimulus["Ex_0"]=stimulus["RiseTime"]
+                stimulus["Ey_0"]=stimulus["DecayTime"]
+                stimulus["Ez_0"]=stimulus["MeanPercent"]
                 stimulus["frequency0"] = stimulus["Rate"]
 
-                stimulus["Ex_1"] = stimulus["AmpVar"]
-                stimulus["Ey_1"] = stimulus["SdPercent"]
-                stimulus["Ez_1"] = stimulus["RelativeSkew"]
-                stimulus["frequency1"] = stimulus["Sigma"]
+                stimulus["Ex_1"] = stimulus["RelativeSkew"]
+                stimulus["Ey_1"] = stimulus["Reversal"]
+                stimulus["Ez_1"] = stimulus["RandomSeed"]
+                stimulus["frequency1"] = stimulus["SDPercent"]
 
-                stimulus["ramp_up_time"]=stimulus["RiseTime"]
-                stimulus["ramp_down_time"] = stimulus["DecayTime"]
             stimulus["Name"] = name
 
             stimuli.append(stimulus)
