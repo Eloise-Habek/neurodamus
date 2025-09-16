@@ -571,7 +571,7 @@ class ElectrodeSource(SignalSource):
 
         self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
 
-        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay, step=self.stepSize) # Defines the temporal profile of the signal
+        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
 
     def get_soma_position(self,section):
