@@ -722,7 +722,7 @@ class ElectrodeSource(SignalSource):
             ramp_down = np.linspace(1, 0, ramp_down_number)
             vector[len(vector) - ramp_down_number:] *= ramp_down
 
-        return vector
+        return np.array(vector)
 
     def get_scale_factor(self, section, x):
 
