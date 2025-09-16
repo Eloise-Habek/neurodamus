@@ -391,6 +391,9 @@ class SonataConfig:
     @staticmethod
     def _translate_dict(item_translation, libsonata_obj) -> dict:
         """Translate SONATA/libsonata key names (snake_case) to Neurodamus internal paramters"""
+        print(dir(libsonata_obj))
+        for x in dir(libsonata_obj):
+            print(x)
         attrs = [
             x
             for x in dir(libsonata_obj)
@@ -398,6 +401,7 @@ class SonataConfig:
         ]
         result = {}
         for att in attrs:
+            print(att)
             key = item_translation.get(att, snake_to_camel(att))
             parsed_value = getattr(libsonata_obj, att)
             if parsed_value is not None:
