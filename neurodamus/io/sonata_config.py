@@ -319,7 +319,7 @@ class SonataConfig:
                 stimulus["Ex_0"]=stimulus["RiseTime"]
                 stimulus["Ey_0"]=stimulus["DecayTime"]
                 stimulus["Ez_0"]=stimulus["MeanPercent"]
-                stimulus["frequency0"] = stimulus["Rate"]
+                stimulus["frequency0"] = stimulus["Dt"]
 
                 stimulus["Ex_1"] = stimulus["RelativeSkew"]
                 stimulus["Ey_1"] = stimulus["Reversal"]
