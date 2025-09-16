@@ -597,8 +597,6 @@ class ElectrodeSource(SignalSource):
         y = np.mean(ypos)
         z = np.mean(zpos)
 
-        print(np.array([x,y,z]),flush=True)
-
         return np.array([x,y,z])
 
     def grindaway(self,hsection):
@@ -778,7 +776,7 @@ class ElectrodeSource(SignalSource):
 
         stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
 
-        print(stimVec)
+        print(np.max(np.abs(stimVec)))
 
         segVec = h.Vector()
 
