@@ -762,7 +762,7 @@ class ElectrodeSource(SignalSource):
 
         section.insert('extracellular')
 
-        seg = section(0.5)
+        seg = section(x)
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
         print('scaleFaco0 is ' + str(scaleFac0))
