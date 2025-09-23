@@ -141,7 +141,7 @@ class SignalSource:
         self._add_point(base_amp)  # Last point
         return self
 
-    def add_sines(self, total_duration, freq, freq1=0, step=0.025, **kw):
+    def add_sines(self, total_duration, freq, freq1=0, step=0.5, **kw):
         """ Builds a sinusoidal signal from a combination of sines.
         Args:
             total_duration: Total duration, in ms, including ramp-up and ramp-down periods
@@ -788,7 +788,7 @@ class ElectrodeSource(SignalSource):
         self.extracellulars.append(seg.extracellular)
         self.extracellulars.append(seg.extracellular.e)
 
-        out = segVec.play(seg.extracellular._ref_e, self.time_vec)
+        out = segVec.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append(out)
 
         return segVec.to_python(), self.time_vec.to_python()
