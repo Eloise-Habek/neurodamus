@@ -765,7 +765,11 @@ class ElectrodeSource(SignalSource):
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
-        self.stim_vec_final = self.stim_vec.mul(scaleFac0) + self.stim_vec2.mul(scaleFac1)
+        print(self.stim_vec.max())
+
+        stim_vec_final = self.stim_vec.mul(scaleFac0) + self.stim_vec2.mul(scaleFac1)
+
+        print(self.stim_vec.max())
 
 
         # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
@@ -781,11 +785,11 @@ class ElectrodeSource(SignalSource):
         # for v in stimVec:
         #     segVec.append(v)
 
-        self.extracellulars.append(self.stim_vec_final)
+        self.extracellulars.append(stim_vec_final)
         self.extracellulars.append(seg.extracellular)
         self.extracellulars.append(seg.extracellular.e)
 
-        out = self.stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
+        out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append(out)
 
-        return self.stim_vec_final, self.time_vec
+        return stim_vec_final, self.time_vec
