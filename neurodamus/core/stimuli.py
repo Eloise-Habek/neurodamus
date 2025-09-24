@@ -765,11 +765,9 @@ class ElectrodeSource(SignalSource):
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
-        print(self.stim_vec.max())
-
-        stim_vec_final = self.stim_vec.mul(scaleFac0) + self.stim_vec2.mul(scaleFac1)
-
-        print(self.stim_vec.max())
+        stim_vec_final = self.stim_vec.c()     # clone to make a new Vector
+        stim_vec_final.mul(scaleFac0)          # scale in place
+        stim_vec_final.add(self.stim_vec2.c().mul(scaleFac1))  # add scaled clone of stim_vec2
 
 
         # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
