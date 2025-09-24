@@ -548,7 +548,7 @@ class ElectrodeSource(SignalSource):
 
     def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
                  Ex_1, Ey_1, Ez_1, frequency1,
-                 ramp_up_time, ramp_down_time,somaPosition):
+                 ramp_up_time, ramp_down_time):
 
 
         """
@@ -576,8 +576,6 @@ class ElectrodeSource(SignalSource):
         self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
 
         self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
-
-        self.soma_position = somaPosition
 
     def get_soma_position(self,section):
 
@@ -730,8 +728,6 @@ class ElectrodeSource(SignalSource):
         if 'soma' in section.name():
 
             segpositions = self.get_soma_position(section)
-
-            self.soma_position = segpositions.copy()
         else:
 
             if int(h.n3d(sec=section)) == 0: # Axonal segments don't have 3d points associated, so we guess
@@ -747,7 +743,7 @@ class ElectrodeSource(SignalSource):
 
         # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
 
-        displacementVector = segpositions - self.soma_position
+        displacementVector = segpositions # Here, we set the reference at the point (0,0,0)
         displacementVector *= 1e-6 # Converts from um to m
 
         scaleFactor0 = np.dot(displacementVector, np.array([self.Ex_0,self.Ey_0, self.Ez_0]))
@@ -767,28 +763,28 @@ class ElectrodeSource(SignalSource):
         seg = section(x)
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
-        stimVec0 = self.stim_vec.to_python()
-        stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
-        stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
 
-        stimVec1 = self.stim_vec2.to_python()
-        stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
-        stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
-
-        stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
+        self.stim_vec_final = self.stim_vec.mul(scaleFac0).add(self.stim_vec2.mul(scaleFac1))
 
 
-        segVec = h.Vector()
+        # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
+        # stimVec0 = self.stim_vec.to_python()
+        # stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
+        # stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
+        # stimVec1 = self.stim_vec2.to_python()
+        # stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
+        # stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
 
-        for v in stimVec:
-            segVec.append(v)
+        # stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
+        # segVec = h.Vector()
+        # for v in stimVec:
+        #     segVec.append(v)
 
-
-        self.extracellulars.append(segVec)
+        self.extracellulars.append(self.stim_vec_final)
         self.extracellulars.append(seg.extracellular)
         self.extracellulars.append(seg.extracellular.e)
 
-        out = segVec.play(seg.extracellular._ref_e, self.time_vec,1)
+        out = self.stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append(out)
 
-        return segVec.to_python(), self.time_vec.to_python()
+        return self.stim_vec_final, self.time_vec
