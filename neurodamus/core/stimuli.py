@@ -728,6 +728,7 @@ class ElectrodeSource(SignalSource):
         if 'soma' in section.name():
 
             segpositions = self.get_soma_position(section)
+            self.soma_position = segpositions
         else:
 
             if int(h.n3d(sec=section)) == 0: # Axonal segments don't have 3d points associated, so we guess
