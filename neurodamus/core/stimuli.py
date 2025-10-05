@@ -555,6 +555,7 @@ class ElectrodeSource(SignalSource):
         Creates a new source that injects a signal under e_extracellular
         """
         super().__init__()
+        print("Initializing electrodeSource")
         self.stim_delay = delay
         self.duration = duration
 
