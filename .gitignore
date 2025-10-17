@@ -9,7 +9,7 @@
 .vscode
 spack*
 pytest-of*
-
+**/.ipynb_checkpoints/*
 # Project files
 .ropeproject
 .project

@@ -92,6 +92,7 @@ class OrnsteinUhlenbeck(BaseStim):
     stim_count = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):
+
         super().__init__(target, stim_info, cell_manager)
 
         self.stimList = []  # sources go here
