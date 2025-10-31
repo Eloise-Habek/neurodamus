@@ -118,6 +118,49 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
+    def add_biphasic_train(self, amp, frequency, pulse_duration, total_duration, **kw):
+        """Stimulus with repeated symmetric biphasic pulse injections at a specified frequency.
+
+        Args:
+            amp (float): Amplitude of each pulse.
+            frequency (float): Number of pulses per second (Hz).
+            pulse_duration (float): Duration of a single pulse (peak time) in milliseconds.
+            total_duration (float): Total duration of the pulse train in milliseconds.
+            base_amp (float, optional): Base amplitude (default is 0.0).
+
+        Returns:
+            SignalSource: The instance of the SignalSource class with the configured pulse train.
+        """
+        base_amp = kw.get("base_amp", self._base_amp)
+        tau = 1000 / frequency
+        delay = tau - 2*pulse_duration
+
+        # we cannot have overlapping pulses otherwise we may go back in time.
+        # For now it is disabled until we decide how to handle this
+        if delay < 0.0:
+            raise ValueError(
+                f"Invalid configuration: The pulse duration ({pulse_duration} ms) is "
+                f"longer than the pulse interval ({tau} ms). Calculated delay: "
+                f"{delay} ms. Please adjust the pulse duration or frequency."
+            )
+
+        number_pulses = int(total_duration / tau)
+        for _ in range(number_pulses):
+            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
+            self.add_pulse(amp, pulse_duration, base_amp=-1*base_amp)
+            self.delay(delay)
+
+        # Add final pulse, possibly partial
+        remaining_time = total_duration - number_pulses * tau
+        if pulse_duration <= remaining_time:
+            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
+            self.delay(min(delay, remaining_time - pulse_duration))
+        else:
+            self.add_pulse(amp, remaining_time, base_amp=base_amp)
+        # Last point
+        self._add_point(base_amp)
+        return self
+
     def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
         """Builds a sinusoidal signal.
 
@@ -544,39 +587,9 @@ class ConductanceSource(SignalSource):
 # TODO: 1. more stimulus primitives than step. 2. a dt of 0.1 ms is hardcoded. make this flexible!
 
 class ElectrodeSource(SignalSource):
-    _all_sources = []
 
-    def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
-                 Ex_1, Ey_1, Ez_1, frequency1,
-                 ramp_up_time, ramp_down_time):
-
-
-        """
-        Creates a new source that injects a signal under e_extracellular
-        """
+    def __init__():
         super().__init__()
-        print("Initializing electrodeSource")
-        self.stim_delay = delay
-        self.duration = duration
-
-        self.Ex_0 = Ex_0 # x-component of the first E field (in V/m)
-        self.Ey_0 = Ey_0 # y-component of the first E field (in V/m)
-        self.Ez_0 = Ez_0 # z-component of the first E field (in V/m)
-        self.frequency0 = frequency0 # Temporal frequency of the first E field (in Hz)
-        self.Ex_1 = Ex_1 # x-component of the second E field (in V/m)
-        self.Ey_1 = Ey_1 # y-component of the second E field (in V/m)
-        self.Ez_1 = Ez_1 # z-component of the second E field (in V/m)
-        self.frequency1 = frequency1 # Temporal frequency of the second E field (in Hz)
-
-        self._all_sources.append(self)
-        self.extracellulars = []
-
-        self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
-        self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
-
-        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
-
-        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
     def get_soma_position(self,section):
 
@@ -709,6 +722,59 @@ class ElectrodeSource(SignalSource):
 
         return segpos
 
+    def attach_to(self, section, x):
+
+        self.extracellulars.append(self.time_vec)
+
+        section.insert('extracellular')
+
+        seg = section(x)
+
+        stim_vec_final = self.get_stim_vec(section,x)
+
+        self.extracellulars.append(stim_vec_final)
+        self.extracellulars.append(seg.extracellular)
+        self.extracellulars.append(seg.extracellular.e)
+
+        out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
+        self.extracellulars.append(out)
+
+        return stim_vec_final, self.time_vec
+
+class ConstantElectrodeSource(ElectrodeSource):
+    _all_sources = []
+
+    def __init__(self, delay, duration, Ex_0, Ey_0, Ez_0, frequency0,
+                 Ex_1, Ey_1, Ez_1, frequency1,
+                 ramp_up_time, ramp_down_time):
+
+
+        """
+        Creates a new source that injects a signal under e_extracellular
+        """
+        super().__init__()
+        self.stim_delay = delay
+        self.duration = duration
+
+        self.Ex_0 = Ex_0 # x-component of the first E field (in V/m)
+        self.Ey_0 = Ey_0 # y-component of the first E field (in V/m)
+        self.Ez_0 = Ez_0 # z-component of the first E field (in V/m)
+        self.frequency0 = frequency0 # Temporal frequency of the first E field (in Hz)
+        self.Ex_1 = Ex_1 # x-component of the second E field (in V/m)
+        self.Ey_1 = Ey_1 # y-component of the second E field (in V/m)
+        self.Ez_1 = Ez_1 # z-component of the second E field (in V/m)
+        self.frequency1 = frequency1 # Temporal frequency of the second E field (in Hz)
+
+        self._all_sources.append(self)
+        self.extracellulars = []
+
+        self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
+        self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
+
+        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
+
+        self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
+
 
     def apply_ramp(self, vector, step=0.025):
 
@@ -756,20 +822,13 @@ class ElectrodeSource(SignalSource):
 
         return scaleFactor0, scaleFactor1
 
-    def attach_to(self, section, x):
-
-        self.extracellulars.append(self.time_vec)
-
-        section.insert('extracellular')
-
-        seg = section(x)
+    def get_stim_vec(self, section, x):
 
         scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
         stim_vec_final = self.stim_vec.c()     # clone to make a new Vector
         stim_vec_final.mul(scaleFac0)          # scale in place
         stim_vec_final.add(self.stim_vec2.c().mul(scaleFac1))  # add scaled clone of stim_vec2
-
 
         # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
         # stimVec0 = self.stim_vec.to_python()
@@ -784,11 +843,90 @@ class ElectrodeSource(SignalSource):
         # for v in stimVec:
         #     segVec.append(v)
 
-        self.extracellulars.append(stim_vec_final)
-        self.extracellulars.append(seg.extracellular)
-        self.extracellulars.append(seg.extracellular.e)
+        return stim_vec_final
 
-        out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
-        self.extracellulars.append(out)
+class ArbitraryElectrodeSource(ElectrodeSource):
+    _all_sources = []
 
-        return stim_vec_final, self.time_vec
+    def __init__(self, delay, duration, amplitude, width, frequency, path_to_fields):
+
+
+        """
+        Creates a new source that injects a signal under e_extracellular
+        """
+        super().__init__()
+        self.stim_delay = delay
+        self.duration = duration
+
+        self.amplitude = amp_start
+        self.width = width # Width of a single phase of the pulse
+        self.frequency = frequency # Temporal frequency of the first E field (in Hz)
+
+        self.path_to_fields = path_to_fields
+
+        self._all_sources.append(self)
+        self.extracellulars = []
+
+        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
+
+        self.add_biphasic_train(self, amp_start, frequency, width, duration) # Defines the temporal profile of the signal
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+            self.soma_position = segpositions
+        else:
+            if int(h.n3d(sec=section)) == 0: # Axonal segments don't have 3d points associated, so we guess
+                segpositions = self.interp_axon_positions(section, x)
+            else:
+                segpositions = self.get_positions(section, x)
+
+        scaleFactor = self.interpolate_potentials(segpositions)
+
+        return scaleFactor
+
+    def interpolate_potentials(self, segposition):
+
+        with h5py.File(self.path_to_fields, 'r') as f:
+            for i in f['FieldGroups']:
+                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
+            pot = geth5Dataset(path_to_fields, tmp, 'comp0')
+            for i in f['Meshes']:
+                tmp = 'Meshes/'+i
+                break
+            x = geth5Dataset(path_to_fields, tmp, 'axis_x')
+            y = geth5Dataset(path_to_fields, tmp, 'axis_y')
+            z = geth5Dataset(path_to_fields, tmp, 'axis_z')
+
+
+        segposition *= 1e-6 # Converts um to m, to match the potential field file
+
+        InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
+
+        potential = InterpFcn(segposition)  # Interpolate potential field at location of neural segments
+
+        return potential
+
+    def get_stim_vec(self, section, x):
+
+        scaleFac0 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
+
+        stim_vec_final = self.stim_vec.c()     # clone to make a new Vector
+        stim_vec_final.mul(scaleFac0)          # scale in place
+
+        # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
+        # stimVec0 = self.stim_vec.to_python()
+        # stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
+        # stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
+        # stimVec1 = self.stim_vec2.to_python()
+        # stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
+        # stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
+
+        # stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
+        # segVec = h.Vector()
+        # for v in stimVec:
+        #     segVec.append(v)
+
+        return stim_vec_final

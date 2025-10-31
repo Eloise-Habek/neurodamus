@@ -51,8 +51,14 @@ class StimulusManager:
         target = self._target_manager.get_target(target_spec)
         log_verbose("Interpret stimulus")
         cell_manager = self._target_manager._cell_manager
-        if stim_info["Mode"]=='Extracellular': # Workaround since libsonata does not accept "Extracellular" as a module
-            stim_t = self._stim_types["Extracellular"]
+        if stim_info["Mode"]=='Extracellular'
+            if stim_info["Pattern"]=="RelativeShotNoise": # Workaround since libsonata does not accept "Extracellular" as a module
+                stim_t = self._stim_types["ConstantExtracellular"]
+            elif stim_info["Pattern"]=="Pulse":
+                stim_t = self._stim_types["ArbitraryExtracellular"]
+            else:
+                raise ValueError(stim_info["Pattern"]+" does not work")
+
         stim = stim_t(target, stim_info, cell_manager)
         self._stimulus.append(stim)
 
@@ -781,7 +787,7 @@ class SEClamp(BaseStim):
             logging.warning("%s ignores delay", self.__class__.__name__)
 
 @StimulusManager.register_type
-class Extracellular(BaseStim):
+class ConstantExtracellular(BaseStim):
     """
     Extracellular stimulus. Currently, the stimulus is either a spatially-uniform E field
     with a sinusoidal time course (potentially with a ramp-up and ramp-down period)
@@ -809,7 +815,7 @@ class Extracellular(BaseStim):
 
         times = []
 
-        es = ElectrodeSource(self.delay, self.duration,
+        es = ConstantElectrodeSource(self.delay, self.duration,
                             self.Ex_0, self.Ey_0, self.Ez_0, self.frequency0,
                             self.Ex_1, self.Ey_1, self.Ez_1, self.frequency1,
                             self.ramp_up_time, self.ramp_down_time)
@@ -836,7 +842,7 @@ class Extracellular(BaseStim):
 
                 self.stimList.append(es)  # save source
 
-        Extracellular.stimCount += 1  # increment global count
+        ConstantExtracellular.stimCount += 1  # increment global count
 
     def parse_check_all_parameters(self, stim_info: dict):
 
@@ -888,5 +894,68 @@ class Extracellular(BaseStim):
                 raise Exception("ramp_down_time must be positive")
         else:
             self.ramp_down_time = 0
+
+        return True
+
+@StimulusManager.register_type
+class ArbitraryExtracellular(BaseStim):
+    """
+    Extracellular stimulus. Currently, the stimulus is either a spatially-uniform E field
+    with a sinusoidal time course (potentially with a ramp-up and ramp-down period)
+    or the sum of two such E fields
+    """
+    stimCount = 0  # global count for seeding
+
+    IsPythonOnly = True
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+
+        super().__init__(target, stim_info, cell_manager)
+
+        self.stimList = []  # sources go here
+
+        tpoints = target.get_point_list(cell_manager,SectionType.ALL)
+
+
+        posList = {}
+
+        fields = {}
+
+        times = []
+
+        es = ArbitraryElectrodeSource(self.delay, self.duration,self.amplitude, self.frequency,self.width,self.path_to_fields)
+
+        for tpoint_list in tpoints:
+
+            for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                x = tpoint_list.x[sec_id]
+
+                # skip sections not in this split
+                if not sc.exists():
+                    continue
+
+                # inject Extracellular signal
+
+                phi, time = es.attach_to(sc.sec, x)
+
+                #posList[sc.sec.name()+'('+str(x)+')'] = pos
+                fields[sc.sec.name()+'('+str(x)+')'] = phi
+                times.append(time)
+
+
+                self.stimList.append(es)  # save source
+
+        ArbitraryExtracellular.stimCount += 1  # increment global count
+
+    def parse_check_all_parameters(self, stim_info: dict):
+
+
+        self.amplitude = stim_info["AmpStart"]
+        self.frequency = stim_info["Frequency"]
+        self.delay = stim_info["Delay"]
+        self.duration = stim_info["Duration"]
+        self.width = stim_info["Width"]
+        self.path_to_fields = stim_info["RepresentsPhysicalElectrode"]
 
         return True
