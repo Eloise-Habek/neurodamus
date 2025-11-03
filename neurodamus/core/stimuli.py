@@ -878,7 +878,7 @@ class ArbitraryElectrodeSource(ElectrodeSource):
 
         self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
 
-        self.add_biphasic_train(self, amplitude, frequency, width, duration) # Defines the temporal profile of the signal
+        self.add_biphasic_train(amplitude, frequency, width, duration) # Defines the temporal profile of the signal
 
     def get_scale_factor(self, section, x):
 
