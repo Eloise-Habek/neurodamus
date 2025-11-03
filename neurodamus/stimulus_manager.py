@@ -953,12 +953,11 @@ class ArbitraryExtracellular(BaseStim):
 
     def parse_check_all_parameters(self, stim_info: dict):
 
-
         self.amplitude = stim_info["AmpStart"]
         self.frequency = stim_info["Frequency"]
         self.delay = stim_info["Delay"]
         self.duration = stim_info["Duration"]
         self.width = stim_info["Width"]
-        self.path_to_fields = stim_info["PathToFields"]
+        self.path_to_fields = "Output.h5"
 
         return True
