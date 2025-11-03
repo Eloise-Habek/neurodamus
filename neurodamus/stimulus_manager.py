@@ -912,6 +912,9 @@ class ArbitraryExtracellular(BaseStim):
 
         super().__init__(target, stim_info, cell_manager)
 
+        if not self.parse_check_all_parameters(stim_info):
+            return None  # nothing to do, stim is a no-op
+
         self.stimList = []  # sources go here
 
         tpoints = target.get_point_list(cell_manager,SectionType.ALL)
