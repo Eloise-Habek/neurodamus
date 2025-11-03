@@ -8,6 +8,8 @@ from . import Neuron
 import numpy as np
 from neuron import h
 from scipy.interpolate import interp1d
+import h5py
+from scipy.interpolate import RegularGridInterpolator
 
 class SignalSource:
     def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
@@ -588,8 +590,16 @@ class ConductanceSource(SignalSource):
 
 class ElectrodeSource(SignalSource):
 
-    def __init__():
+    def __init__(self):
         super().__init__()
+        self.extracellulars = []
+        self.soma_position = None
+
+    def get_stim_vec(self):
+        '''
+        This function is defined separately for each subclass of ElectrodeSource
+        '''
+        pass
 
     def get_soma_position(self,section):
 
@@ -766,7 +776,6 @@ class ConstantElectrodeSource(ElectrodeSource):
         self.frequency1 = frequency1 # Temporal frequency of the second E field (in Hz)
 
         self._all_sources.append(self)
-        self.extracellulars = []
 
         self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
         self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
@@ -858,18 +867,18 @@ class ArbitraryElectrodeSource(ElectrodeSource):
         self.stim_delay = delay
         self.duration = duration
 
-        self.amplitude = amp_start
+        self.amplitude = amplitude
         self.width = width # Width of a single phase of the pulse
         self.frequency = frequency # Temporal frequency of the first E field (in Hz)
 
         self.path_to_fields = path_to_fields
 
         self._all_sources.append(self)
-        self.extracellulars = []
+
 
         self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
 
-        self.add_biphasic_train(self, amp_start, frequency, width, duration) # Defines the temporal profile of the signal
+        self.add_biphasic_train(self, amplitude, frequency, width, duration) # Defines the temporal profile of the signal
 
     def get_scale_factor(self, section, x):
 
@@ -887,18 +896,37 @@ class ArbitraryElectrodeSource(ElectrodeSource):
 
         return scaleFactor
 
+    def geth5Dataset(self, h5f, group_name, dataset_name):
+        """
+        Find and get dataset from h5 file.
+        out = geth5Dataset(h5f, group_name, dataset_name)
+        h5f - string - h5 file path and name
+        group_name - string - where to initiate search, '/' for root
+        dataset_name - string - dataset to be found
+        return - numpy array
+        """
+
+        def find_dataset(name):
+            """ Find first object with dataset_name anywhere in the name """
+            if dataset_name in name:
+                return name
+
+        with h5py.File(h5f, 'r') as f:
+            k = f[group_name].visit(find_dataset)
+            return f[group_name + '/' + k][()]
+
     def interpolate_potentials(self, segposition):
 
         with h5py.File(self.path_to_fields, 'r') as f:
             for i in f['FieldGroups']:
                 tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
-            pot = geth5Dataset(path_to_fields, tmp, 'comp0')
+            pot = self.geth5Dataset(self.path_to_fields, tmp, 'comp0')
             for i in f['Meshes']:
                 tmp = 'Meshes/'+i
                 break
-            x = geth5Dataset(path_to_fields, tmp, 'axis_x')
-            y = geth5Dataset(path_to_fields, tmp, 'axis_y')
-            z = geth5Dataset(path_to_fields, tmp, 'axis_z')
+            x = self.geth5Dataset(self.path_to_fields, tmp, 'axis_x')
+            y = self.geth5Dataset(self.path_to_fields, tmp, 'axis_y')
+            z = self.geth5Dataset(self.path_to_fields, tmp, 'axis_z')
 
 
         segposition *= 1e-6 # Converts um to m, to match the potential field file

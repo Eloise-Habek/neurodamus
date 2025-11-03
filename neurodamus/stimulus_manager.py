@@ -21,7 +21,7 @@ import logging
 
 from .core import NeuronWrapper as Nd, random
 from .core.configuration import ConfigurationError, SimConfig
-from .core.stimuli import ConductanceSource, CurrentSource, ElectrodeSource
+from .core.stimuli import ConductanceSource, CurrentSource, ConstantElectrodeSource, ArbitraryElectrodeSource
 from .utils.logging import log_verbose
 from .report_parameters import SectionType
 
@@ -51,7 +51,7 @@ class StimulusManager:
         target = self._target_manager.get_target(target_spec)
         log_verbose("Interpret stimulus")
         cell_manager = self._target_manager._cell_manager
-        if stim_info["Mode"]=='Extracellular'
+        if stim_info["Mode"]=='Extracellular':
             if stim_info["Pattern"]=="RelativeShotNoise": # Workaround since libsonata does not accept "Extracellular" as a module
                 stim_t = self._stim_types["ConstantExtracellular"]
             elif stim_info["Pattern"]=="Pulse":
