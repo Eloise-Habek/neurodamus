@@ -959,6 +959,6 @@ class ArbitraryExtracellular(BaseStim):
         self.delay = stim_info["Delay"]
         self.duration = stim_info["Duration"]
         self.width = stim_info["Width"]
-        self.path_to_fields = stim_info["RepresentsPhysicalElectrode"]
+        self.path_to_fields = stim_info["PathToFields"]
 
         return True
