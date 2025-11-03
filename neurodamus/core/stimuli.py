@@ -932,7 +932,7 @@ class ArbitraryElectrodeSource(ElectrodeSource):
 
         segposition *= 1e-6 # Converts um to m, to match the potential field file
 
-        InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
+        InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear',fill_value=0)
 
         potential = InterpFcn(segposition)  # Interpolate potential field at location of neural segments
 
