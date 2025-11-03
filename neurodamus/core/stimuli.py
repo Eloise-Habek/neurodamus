@@ -936,7 +936,7 @@ class ArbitraryElectrodeSource(ElectrodeSource):
 
         potential = InterpFcn(segposition)  # Interpolate potential field at location of neural segments
         if np.isnan(potential):
-            potential = 0
+            potential = [0]
 
         return potential
 
