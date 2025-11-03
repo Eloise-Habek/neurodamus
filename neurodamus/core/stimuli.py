@@ -935,6 +935,8 @@ class ArbitraryElectrodeSource(ElectrodeSource):
         InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear',fill_value=0)
 
         potential = InterpFcn(segposition)  # Interpolate potential field at location of neural segments
+        if np.isnan(potential):
+            potential = 0
 
         return potential
 
