@@ -315,7 +315,7 @@ class SonataConfig:
             )
             stimulus["Mode"] = input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
             if stimulus["Mode"]=="Extracellular":
-                if stimulus["Pattern"]=="RelativeShotNoise"
+                if stimulus["Pattern"]=="RelativeShotNoise":
                     stimulus["Ex_0"]=stimulus["RiseTime"]
                     stimulus["Ey_0"]=stimulus["DecayTime"]
                     stimulus["Ez_0"]=stimulus["MeanPercent"]
