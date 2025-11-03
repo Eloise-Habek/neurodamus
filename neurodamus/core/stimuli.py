@@ -747,7 +747,7 @@ class ElectrodeSource(SignalSource):
         self.extracellulars.append(seg.extracellular.e)
 
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
-        print(out)
+        print(stim_vec_final.max())
         self.extracellulars.append(out)
 
         return stim_vec_final, self.time_vec
