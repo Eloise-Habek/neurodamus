@@ -892,7 +892,7 @@ class ArbitraryElectrodeSource(ElectrodeSource):
             else:
                 segpositions = self.get_positions(section, x)
 
-        scaleFactor = self.interpolate_potentials(segpositions)
+        scaleFactor = self.interpolate_potentials(segpositions)[0]
 
         return scaleFactor
 
@@ -942,7 +942,6 @@ class ArbitraryElectrodeSource(ElectrodeSource):
         scaleFac0 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
 
-        print(scaleFac0)
         stim_vec_final = self.stim_vec.c()     # clone to make a new Vector
         stim_vec_final.mul(scaleFac0)          # scale in place
 
