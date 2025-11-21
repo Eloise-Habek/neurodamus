@@ -710,7 +710,9 @@ class ElectrodeSource(SignalSource):
         return segpos
 
 
-    def apply_ramp(self, vector, step=0.025):
+    def apply_ramp(self, hocVector, step=0.025):
+
+        vector = hocVector.as_numpy()
 
         ramp_up_number = int(self.ramp_up_time/step) # Number of time points during the ramp-up window
         ramp_down_number = int(self.ramp_down_time/step) # Number of time points during the ramp-down window
@@ -722,7 +724,7 @@ class ElectrodeSource(SignalSource):
             ramp_down = np.linspace(1, 0, ramp_down_number)
             vector[len(vector) - ramp_down_number:] *= ramp_down
 
-        return np.array(vector)
+        return hocVector
 
     def get_scale_factor(self, section, x):
 
@@ -770,19 +772,7 @@ class ElectrodeSource(SignalSource):
         stim_vec_final.mul(scaleFac0)          # scale in place
         stim_vec_final.add(self.stim_vec2.c().mul(scaleFac1))  # add scaled clone of stim_vec2
 
-
-        # We deactivate the ramp feature for memory reasons, but this is inoperative anyway
-        # stimVec0 = self.stim_vec.to_python()
-        # stimVec0 = self.apply_ramp(stimVec0) # Scales the sinusoid by the ramp-up and ramp-down windows
-        # stimVec0 *= scaleFac0 # Applies the calculated potential to the temporal waveform
-        # stimVec1 = self.stim_vec2.to_python()
-        # stimVec1 = self.apply_ramp(stimVec1)# Scales the sinusoid by the ramp-up and ramp-down windows
-        # stimVec1 *= scaleFac1# Applies the calculated potential to the temporal waveform
-
-        # stimVec = stimVec0 + stimVec1 # The total signal is just the sum of the contribution from the two E fields
-        # segVec = h.Vector()
-        # for v in stimVec:
-        #     segVec.append(v)
+        stim_vec_final = self.apply_ramp(stim_vec_final)
 
         self.extracellulars.append(stim_vec_final)
         self.extracellulars.append(seg.extracellular)
