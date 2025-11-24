@@ -24,7 +24,7 @@ from .core.configuration import ConfigurationError, SimConfig
 from .core.stimuli import ConductanceSource, CurrentSource, ElectrodeSource
 from .utils.logging import log_verbose
 from .report_parameters import SectionType
-
+import numpy as np
 class StimulusManager:
     """A manager for synaptic artificial Stimulus.
     Old stimulus resort to hoc implementation
