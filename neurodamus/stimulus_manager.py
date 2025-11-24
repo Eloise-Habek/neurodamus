@@ -828,9 +828,9 @@ class Extracellular(BaseStim):
 
                 # inject Extracellular signal
 
-                phi, time = es.attach_to(sc.sec, x)
+                phi, time, pos = es.attach_to(sc.sec, x)
 
-                #posList[sc.sec.name()+'('+str(x)+')'] = pos
+                posList[sc.sec.name()+'('+str(x)+')'] = pos
                 fields[sc.sec.name()+'('+str(x)+')'] = phi
                 times.append(time)
 
@@ -838,6 +838,8 @@ class Extracellular(BaseStim):
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
+
+        np.save('positions.npy',posList)
 
     def parse_check_all_parameters(self, stim_info: dict):
 

@@ -741,7 +741,7 @@ class ElectrodeSource(SignalSource):
 
         scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
 
-        return scaleFactor0, scaleFactor1
+        return scaleFactor0, scaleFactor1, segpositions
 
     def uniform_potentials(self, segpositions):
 
@@ -766,7 +766,7 @@ class ElectrodeSource(SignalSource):
 
         seg = section(x)
 
-        scaleFac0, scaleFac1 = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
+        scaleFac0, scaleFac1, segposition = self.get_scale_factor(section, x) # Calculates the potential relative to the soma for the given segment, for both of the E fields
 
         stim_vec_final = self.stim_vec.c()     # clone to make a new Vector
         stim_vec_final.mul(scaleFac0)          # scale in place
@@ -781,4 +781,4 @@ class ElectrodeSource(SignalSource):
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append(out)
 
-        return stim_vec_final, self.time_vec
+        return stim_vec_final, self.time_vec, segposition
