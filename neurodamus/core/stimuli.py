@@ -798,7 +798,7 @@ class ElectrodeSource(SignalSource):
 
     def attach_to(self, section, x):
 
-        self.extracellulars.append(self.time_vec)
+        #self.extracellulars.append(self.time_vec)
 
         section.insert('extracellular')
 
@@ -812,11 +812,11 @@ class ElectrodeSource(SignalSource):
 
         stim_vec_final = self.apply_ramp(stim_vec_final)
 
-        self.extracellulars.append(stim_vec_final)
-        self.extracellulars.append(seg.extracellular)
-        self.extracellulars.append(seg.extracellular.e)
+        #self.extracellulars.append(stim_vec_final)
+        #self.extracellulars.append(seg.extracellular)
+        #self.extracellulars.append(seg.extracellular.e)
 
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
-        self.extracellulars.append(out)
+        self.extracellulars.append((stim_vec_final,out))
 
         return stim_vec_final.to_python(), self.time_vec, segposition

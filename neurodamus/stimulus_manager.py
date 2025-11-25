@@ -832,10 +832,10 @@ class Extracellular(BaseStim):
 
                 #posList[sc.sec.name()+'('+str(x)+')'] = pos
                 #fields[sc.sec.name()+'('+str(x)+')'] = np.max(phi)
-                times.append(time)
+                #times.append(time)
 
 
-                self.stimList.append(es)  # save source
+        self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
 
