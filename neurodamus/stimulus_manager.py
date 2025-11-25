@@ -839,7 +839,7 @@ class Extracellular(BaseStim):
 
         Extracellular.stimCount += 1  # increment global count
 
-        i = np.random.randint()
+        i = np.random.randint(1000)
 
         np.save('positions_'+str(i)+'.npy',posList)
         np.save('fields_'+str(i)+'.npy', fields)
