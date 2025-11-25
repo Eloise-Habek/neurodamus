@@ -692,7 +692,7 @@ class ElectrodeSource(SignalSource):
             xpos.append(self.soma_position[0])
             zpos.append(self.soma_position[2])
             lens.append(1)
-            ypos.append(self.soma_position[1]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
+            ypos.append(self.soma_position[1]-30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
 
             self.axon1 = True
 
@@ -701,14 +701,14 @@ class ElectrodeSource(SignalSource):
             ### Adds soma position to the list of coordinates
             xpos.append(self.soma_position[0])
             zpos.append(self.soma_position[2])
-            ypos.append(self.soma_position[1]+30)
+            ypos.append(self.soma_position[1]-30)
             lens.append(0)
 
             # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
             xpos.append(self.soma_position[0])
             zpos.append(self.soma_position[2])
             lens.append(1)
-            ypos.append(self.soma_position[1]+60) # If this is the first axonal segment, then it is 60 um displaced along the z-axis
+            ypos.append(self.soma_position[1]-60) # If this is the first axonal segment, then it is 60 um displaced along the z-axis
 
             self.axon2 = True
 
@@ -717,14 +717,14 @@ class ElectrodeSource(SignalSource):
             ### Adds soma position to the list of coordinates
             xpos.append(self.soma_position[0])
             zpos.append(self.soma_position[2])
-            ypos.append(self.soma_position[1]+60)
+            ypos.append(self.soma_position[1]-60)
             lens.append(0)
 
             # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
             xpos.append(self.soma_position[0])
             zpos.append(self.soma_position[2])
             lens.append(1)
-            ypos.append(self.soma_position[1] + 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
+            ypos.append(self.soma_position[1] - 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
