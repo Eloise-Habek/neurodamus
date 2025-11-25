@@ -575,6 +575,7 @@ class ElectrodeSource(SignalSource):
         self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
 
         self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
+        self.axon2 = False
 
         self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
@@ -679,22 +680,51 @@ class ElectrodeSource(SignalSource):
         zpos = []
         lens = []
 
-        ### Adds soma position to the list of coordinates
-        xpos.append(self.soma_position[0])
-        ypos.append(self.soma_position[1])
-        zpos.append(self.soma_position[2])
-        lens.append(0)
-
-        # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
-        xpos.append(self.soma_position[0])
-        ypos.append(self.soma_position[1])
-        lens.append(1)
-
         if self.axon1 == False:
-            zpos.append(self.soma_position[2]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
+
+            ### Adds soma position to the list of coordinates
+            xpos.append(self.soma_position[0])
+            ypos.append(self.soma_position[1])
+            zpos.append(self.soma_position[2])
+            lens.append(0)
+
+            # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
+            xpos.append(self.soma_position[0])
+            zpos.append(self.soma_position[2])
+            lens.append(1)
+            ypos.append(self.soma_position[1]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
+
             self.axon1 = True
+
+        elif self.axon2 == False:
+
+            ### Adds soma position to the list of coordinates
+            xpos.append(self.soma_position[0])
+            zpos.append(self.soma_position[2])
+            ypos.append(self.soma_position[1]+30)
+            lens.append(0)
+
+            # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
+            xpos.append(self.soma_position[0])
+            zpos.append(self.soma_position[2])
+            lens.append(1)
+            ypos.append(self.soma_position[1]+60) # If this is the first axonal segment, then it is 60 um displaced along the z-axis
+
+            self.axon2 = True
+
         else:
-            zpos.append(self.soma_position[2]+60) # If it is the second axonal segment, then it is displaced by 60 um
+
+            ### Adds soma position to the list of coordinates
+            xpos.append(self.soma_position[0])
+            zpos.append(self.soma_position[2])
+            ypos.append(self.soma_position[1]+60)
+            lens.append(0)
+
+            # We assume that the axon is oriented along the z-axis, so we maintain the x- and y-coordinates of the soma
+            xpos.append(self.soma_position[0])
+            zpos.append(self.soma_position[2])
+            lens.append(1)
+            ypos.append(self.soma_position[1] + 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
