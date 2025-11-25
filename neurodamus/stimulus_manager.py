@@ -839,8 +839,10 @@ class Extracellular(BaseStim):
 
         Extracellular.stimCount += 1  # increment global count
 
-        np.save('positions.npy',posList)
-        np.save('fields.npy', fields)
+        i = np.random.randint()
+
+        np.save('positions_'+str(i)+'.npy',posList)
+        np.save('fields_'+str(i)+'.npy', fields)
 
     def parse_check_all_parameters(self, stim_info: dict):
 
