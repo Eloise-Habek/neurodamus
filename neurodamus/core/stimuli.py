@@ -555,7 +555,6 @@ class ElectrodeSource(SignalSource):
         Creates a new source that injects a signal under e_extracellular
         """
         super().__init__()
-        print("Initializing electrodeSource")
         self.stim_delay = delay
         self.duration = duration
 
@@ -695,8 +694,6 @@ class ElectrodeSource(SignalSource):
             lens.append(1)
             ypos.append(self.soma_position[1]-30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
 
-            print('Axon1')
-
             self.axon1 += 1
 
         elif self.axon2 < 4:
@@ -712,8 +709,6 @@ class ElectrodeSource(SignalSource):
             zpos.append(self.soma_position[2])
             lens.append(1)
             ypos.append(self.soma_position[1]-60) # If this is the first axonal segment, then it is 60 um displaced along the z-axis
-
-            print("Axon2")
 
             self.axon2 += 1
 
@@ -737,6 +732,7 @@ class ElectrodeSource(SignalSource):
 
                 self.axon1=0
                 self.axon2=0
+                self.axon3=0
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
