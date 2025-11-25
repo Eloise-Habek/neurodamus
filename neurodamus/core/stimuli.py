@@ -576,6 +576,7 @@ class ElectrodeSource(SignalSource):
 
         self.axon1 = 0 #  # Indicates whether the E field has already been interpolated for the first axonal segment
         self.axon2 = 0
+        self.axon3 = 0
 
         self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
@@ -730,7 +731,9 @@ class ElectrodeSource(SignalSource):
             lens.append(1)
             ypos.append(self.soma_position[1] - 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
 
-            if axon3 == 4:
+            self.axon3 += 1
+
+            if self.axon3 == 4:
 
                 self.axon1=0
                 self.axon2=0
