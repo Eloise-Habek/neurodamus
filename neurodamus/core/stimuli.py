@@ -687,14 +687,14 @@ class ElectrodeSource(SignalSource):
 
         # We assume that the axon is oriented along the y-axis, so we maintain the x- and z-coordinates of the soma
         xpos.append(self.soma_position[0])
-        ypos.append(self.soma_position[2])
+        zpos.append(self.soma_position[2])
         lens.append(1)
 
         if self.axon1 == False:
-            zpos.append(self.soma_position[1]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
+            ypos.append(self.soma_position[1]+30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
             self.axon1 = True
         else:
-            zpos.append(self.soma_position[1]+60) # If it is the second axonal segment, then it is displaced by 60 um
+            ypos.append(self.soma_position[1]+60) # If it is the second axonal segment, then it is displaced by 60 um
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
