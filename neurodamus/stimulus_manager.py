@@ -828,7 +828,7 @@ class Extracellular(BaseStim):
 
                 # inject Extracellular signal
 
-                phi, time, pos = es.attach_to(sc.sec, x)
+                es.attach_to(sc.sec, x)
 
                 #posList[sc.sec.name()+'('+str(x)+')'] = pos
                 #fields[sc.sec.name()+'('+str(x)+')'] = np.max(phi)
