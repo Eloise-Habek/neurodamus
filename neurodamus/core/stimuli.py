@@ -574,8 +574,8 @@ class ElectrodeSource(SignalSource):
         self.ramp_up_time = ramp_up_time # Time over which the stimulus ramps up to its maximum amplitude (in ms)
         self.ramp_down_time = ramp_down_time # Time over which the stimulus ramps down to zero (in ms)
 
-        self.axon1 = False #  # Indicates whether the E field has already been interpolated for the first axonal segment
-        self.axon2 = False
+        self.axon1 = 0 #  # Indicates whether the E field has already been interpolated for the first axonal segment
+        self.axon2 = 0
 
         self.add_sines( self.duration+self.ramp_up_time+self.ramp_down_time, self.frequency0,self.frequency1,delay=self.stim_delay) # Defines the temporal profile of the signal
 
@@ -680,7 +680,7 @@ class ElectrodeSource(SignalSource):
         zpos = []
         lens = []
 
-        if self.axon1 == False:
+        if self.axon1 < 4:
 
             ### Adds soma position to the list of coordinates
             xpos.append(self.soma_position[0])
@@ -696,9 +696,9 @@ class ElectrodeSource(SignalSource):
 
             print('Axon1')
 
-            self.axon1 = True
+            self.axon1 += 1
 
-        elif self.axon2 == False:
+        elif self.axon2 < 4:
 
             ### Adds soma position to the list of coordinates
             xpos.append(self.soma_position[0])
@@ -714,7 +714,7 @@ class ElectrodeSource(SignalSource):
 
             print("Axon2")
 
-            self.axon2 = True
+            self.axon2 += 1
 
         else:
 
@@ -730,8 +730,10 @@ class ElectrodeSource(SignalSource):
             lens.append(1)
             ypos.append(self.soma_position[1] - 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
 
-            self.axon1=False
-            self.axon2=False
+            if axon3 == 4:
+
+                self.axon1=0
+                self.axon2=0
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
