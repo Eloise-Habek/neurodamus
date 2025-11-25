@@ -694,6 +694,8 @@ class ElectrodeSource(SignalSource):
             lens.append(1)
             ypos.append(self.soma_position[1]-30) # If this is the first axonal segment, then it is 30 um displaced along the z-axis
 
+            print('Axon1')
+
             self.axon1 = True
 
         elif self.axon2 == False:
@@ -710,6 +712,8 @@ class ElectrodeSource(SignalSource):
             lens.append(1)
             ypos.append(self.soma_position[1]-60) # If this is the first axonal segment, then it is 60 um displaced along the z-axis
 
+            print("Axon2")
+
             self.axon2 = True
 
         else:
@@ -725,6 +729,9 @@ class ElectrodeSource(SignalSource):
             zpos.append(self.soma_position[2])
             lens.append(1)
             ypos.append(self.soma_position[1] - 1060)  # If this is the first myelinated segment, then it is 30 um displaced along the z-axis
+
+            self.axon1=False
+            self.axon2=False
 
         # Then, we interpolate the coordinates for the given location x along the segment
         fX = interp1d(lens,xpos)
