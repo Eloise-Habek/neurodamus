@@ -8,7 +8,6 @@ from . import Neuron
 import numpy as np
 from neuron import h
 from scipy.interpolate import interp1d
-import bluepysnap as bp
 
 class SignalSource:
     def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
