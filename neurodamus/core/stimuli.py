@@ -817,6 +817,7 @@ class ElectrodeSource(SignalSource):
         #self.extracellulars.append(seg.extracellular.e)
 
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
-        self.extracellulars.append((stim_vec_final,out))
+        print("Testing sim")
+        self.extracellulars.append((out))
 
         return None, None, segposition
