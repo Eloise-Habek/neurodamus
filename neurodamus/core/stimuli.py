@@ -780,7 +780,7 @@ class ElectrodeSource(SignalSource):
         print(segpositions.shape)
         print(segpositions)
 
-        segpositions = cell.local_to_global_coord_mapping(segpositions[np.newaxis])
+        segpositions = cell.local_to_global_coord_mapping(segpositions[np.newaxis]).squeeze()
 
         print(segpositions)
 
