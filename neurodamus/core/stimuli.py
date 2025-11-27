@@ -777,9 +777,6 @@ class ElectrodeSource(SignalSource):
             else:
                 segpositions = self.get_positions(section, x)
 
-        print(segpositions.shape)
-        print(segpositions)
-
         segpositions = cell.local_to_global_coord_mapping(segpositions[np.newaxis]).squeeze()
 
         print(segpositions)
@@ -827,4 +824,4 @@ class ElectrodeSource(SignalSource):
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append((out))
 
-        return None, None, segposition
+        return None, np.max(stim_vec_final.to_python()), segposition
