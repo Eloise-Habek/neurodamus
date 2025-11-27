@@ -817,6 +817,9 @@ class Extracellular(BaseStim):
 
         for tpoint_list in tpoints:
 
+            print('gid is')
+            print(tpoint_list.gid)
+
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
