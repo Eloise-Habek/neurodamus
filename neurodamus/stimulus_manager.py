@@ -829,17 +829,17 @@ class Extracellular(BaseStim):
 
                 # inject Extracellular signal
 
-                _,phi,pos = es.attach_to(cell, sc.sec, x)
+                es.attach_to(cell, sc.sec, x)
 
-                posList[sc.sec.name()+'('+str(x)+')'] = pos
-                fields[sc.sec.name()+'('+str(x)+')'] = phi
+                # posList[sc.sec.name()+'('+str(x)+')'] = pos
+                # fields[sc.sec.name()+'('+str(x)+')'] = phi
                 #times.append(time)
 
 
         self.stimList.append(es)  # save source
 
-        np.save('positions.npy', posList)
-        np.save('fields.npy', fields)
+        # np.save('positions.npy', posList)
+        # np.save('fields.npy', fields)
 
         Extracellular.stimCount += 1  # increment global count
 
