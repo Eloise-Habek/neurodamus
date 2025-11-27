@@ -777,6 +777,9 @@ class ElectrodeSource(SignalSource):
             else:
                 segpositions = self.get_positions(section, x)
 
+        print(segpositions.shape)
+        print(segpositions)
+
         segpositions = cell.local_to_global_coord_mapping(segpositions)
 
         scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
