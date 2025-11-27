@@ -779,8 +779,6 @@ class ElectrodeSource(SignalSource):
 
         segpositions = cell.local_to_global_coord_mapping(segpositions[np.newaxis]).squeeze()
 
-        print(segpositions)
-
         scaleFactor0, scaleFactor1 = self.uniform_potentials(segpositions)
         print(scaleFactor0)
 
