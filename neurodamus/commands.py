@@ -76,6 +76,7 @@ def neurodamus(args=None):
                                 Currently incompatible with NEURON. Options:
                                 - unpermuted: No permutation
                                 - node-adjacency: Optimise for node adjacency
+        --enable-coord-mapping  Enable coordinate mapping for visualization/output [default: False]
     """
     from . import __version__
 
