@@ -818,7 +818,6 @@ class Extracellular(BaseStim):
         for tpoint_list in tpoints:
 
             cell = cell_manager.get_cell(tpoint_list.gid)
-            print(dir(cell))
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
@@ -830,14 +829,16 @@ class Extracellular(BaseStim):
 
                 # inject Extracellular signal
 
-                es.attach_to(sc.sec, x)
+                _,_,pos = es.attach_to(cell, sc.sec, x)
 
-                #posList[sc.sec.name()+'('+str(x)+')'] = pos
+                posList[sc.sec.name()+'('+str(x)+')'] = pos
                 #fields[sc.sec.name()+'('+str(x)+')'] = np.max(phi)
                 #times.append(time)
 
 
         self.stimList.append(es)  # save source
+
+        np.save('positions.npy', posList)
 
         Extracellular.stimCount += 1  # increment global count
 
