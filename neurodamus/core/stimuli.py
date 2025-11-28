@@ -787,7 +787,7 @@ class ElectrodeSource(SignalSource):
 
         # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
 
-        displacementVector = segpositions-np.array([10000,10000,10000]) # Here, we set the reference at the point (0,0,0)
+        displacementVector = segpositions-self.soma_position # Here, we set the reference at the soma
         displacementVector *= 1e-6 # Converts from um to m
 
         scaleFactor0 = np.dot(displacementVector, np.array([self.Ex_0,self.Ey_0, self.Ez_0]))
@@ -821,4 +821,4 @@ class ElectrodeSource(SignalSource):
         out = stim_vec_final.play(seg.extracellular._ref_e, self.time_vec,1)
         self.extracellulars.append((out))
 
-        return None, np.max(stim_vec_final.to_python()), segposition
+        #return None, np.max(stim_vec_final.to_python()), segposition
