@@ -82,7 +82,7 @@ ARG CACHEBUST=1
 RUN source $USR_VENV/bin/activate \
  && cd $WORKDIR \
  && git clone https://github.com/Eloise-Habek/neurodamus-custom.git \
- && cd neurodamus \
+ && cd neurodamus-custom \
  && git checkout stimulus-electrodes-testing \
  && pip install .
 
