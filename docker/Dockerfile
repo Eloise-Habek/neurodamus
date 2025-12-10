@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.authors="Weina Ji <weina.ji@openbraininstitute.or
 # Using SHELL instruction to change default shell for subsequent RUN instructions
 SHELL ["/bin/bash", "-c"]
 
-ARG LIBSONATA_TAG=master
+ARG LIBSONATA_TAG=v0.1.31
 ARG LIBSONATAREPORT_TAG=master
 ARG NEURON_TAG=master
 ARG NEURON_COMMIT_ID
@@ -33,8 +33,9 @@ RUN apt-get --yes -qq update \
  && python3 -m venv $USR_VENV \
  && source $USR_VENV/bin/activate \
  && pip install -U pip setuptools \
- && pip install -U cython pytest sympy jinja2 pyyaml numpy \
-                   numpy wheel pkgconfig
+ && pip install -U cython pytest sympy jinja2 pyyaml scipy numpy \
+                   numpy wheel pkgconfig scikit-learn bluepysnap \
+		   pandas matplotlib
 
 # Install libsonata
 RUN source $USR_VENV/bin/activate \
@@ -68,15 +69,17 @@ RUN source $USR_VENV/bin/activate \
 
 # Build h5py with the local hdf5
 RUN source $USR_VENV/bin/activate \
- && pip install mpi4py \
- && ARCH=$(uname -m) CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/$ARCH-linux-gnu/hdf5/mpich \
+ && MPICC=$(which mpicc) pip install --no-cache-dir --no-binary=mpi4py mpi4py \
+ && CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
     pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
+ARG CACHEBUST=1
 # Install neurodamus and prepare HOC_LIBRARY_PATH
 RUN source $USR_VENV/bin/activate \
  && cd $WORKDIR \
- && git clone https://github.com/openbraininstitute/neurodamus.git \
+ && git clone https://github.com/joseph-tharayil/neurodamus.git \
  && cd neurodamus \
+ && git checkout stimulus-electrodes-testing \
  && pip install .
 
 ENV HOC_LIBRARY_PATH="$WORKDIR/neurodamus/neurodamus/data/hoc"
@@ -92,7 +95,9 @@ RUN wget -q https://raw.githubusercontent.com/openbraininstitute/neurodamus-mode
  && wget -q https://raw.githubusercontent.com/openbraininstitute/neurodamus-models/refs/heads/main/common/mod/ProbGABAAB_EMS.mod -O $NEURODAMUS_MODS_DIR/ProbGABAAB_EMS.mod
 
 # Edit module building script and test build
-ADD build_neurodamus.sh $INSTALL_DIR/bin
+COPY build_neurodamus.sh $INSTALL_DIR/bin
+RUN sed -i 's/\r$//' $INSTALL_DIR/bin/build_neurodamus.sh
+RUN chmod +x $INSTALL_DIR/bin/build_neurodamus.sh
 RUN ARCH=$(uname -m) \
  && sed -i "s/ARCH=\"x86_64\"/ARCH=\"$ARCH\"/g" $INSTALL_DIR/bin/build_neurodamus.sh \
  && build_neurodamus.sh $NEURODAMUS_MODS_DIR \
