@@ -28,7 +28,7 @@ def main():
     try:
         #We can also add these as command arguments later if we want to
         bin = 5
-        simulationData, allData, cellData, spikeData = load_data(config_path, node_group='hex0')
+        simulationData, allData, cellData, spikeData = load_data(config_path)
         cell_to_rank = get_cell_to_rank(cellData, simulationData)
         psth_plot(spikeData, f"all cells", cell_to_rank, simulationData,bin_width=bin, save_histogram=f"AllCells_rasterplot_{bin}bin_smoothed10.png", smoothed=True)
 

@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 
 
-def load_data(sim_config_path, node_group):
+def load_data(sim_config_path):
     try:
         s = bp.Simulation(sim_config_path)
     except Exception:
@@ -24,7 +24,7 @@ def load_data(sim_config_path, node_group):
         spikeData = None
 
     try:
-        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(group=node_group)
+        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(group=s.config['node_set'])
     except Exception:
         cellData = None
 
