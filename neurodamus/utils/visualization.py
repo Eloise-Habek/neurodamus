@@ -141,7 +141,7 @@ def define_psth_plot(simulation_time, title, cell_to_rank):
     ax_hist = ax_raster.twinx()
 
     ax_hist.set_ylabel("Populaion Firing rate (Hz)")
-    ax_hist.set_ylim(0, 1)
+    # ax_hist.set_ylim(0, 1)
 
     ax_stimulation.set_xlabel("Time (ms)")
     ax_stimulation.set_ylabel("Amplitude (V/m)")
