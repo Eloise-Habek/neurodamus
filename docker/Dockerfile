@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.authors="Weina Ji <weina.ji@openbraininstitute.or
 SHELL ["/bin/bash", "-c"]
 
 ARG LIBSONATA_TAG=v0.1.31
-ARG LIBSONATAREPORT_TAG=master
+ARG LIBSONATAREPORT_TAG=v1.2.17
 ARG NEURON_TAG=master
 ARG NEURON_COMMIT_ID
 ARG WORKDIR=/opt/software
