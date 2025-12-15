@@ -81,14 +81,14 @@ ARG CACHEBUST=1
 # Install neurodamus and prepare HOC_LIBRARY_PATH
 RUN source $USR_VENV/bin/activate \
  && cd $WORKDIR \
- && git clone https://github.com/Eloise-Habek/neurodamus-custom.git \
- && cd neurodamus-custom \
+ && git clone https://github.com/Eloise-Habek/neurodamus.git \
+ && cd neurodamus \
  && git checkout stimulus-electrodes-testing \
  && pip install .
 
-ENV HOC_LIBRARY_PATH="$WORKDIR/neurodamus-custom/neurodamus/data/hoc"
-ENV NEURODAMUS_PYTHON="$WORKDIR/neurodamus-custom/neurodamus/data"
-ENV NEURODAMUS_MODS_DIR="$WORKDIR/neurodamus-custom/neurodamus/data/mod"
+ENV HOC_LIBRARY_PATH="$WORKDIR/neurodamus/neurodamus/data/hoc"
+ENV NEURODAMUS_PYTHON="$WORKDIR/neurodamus/neurodamus/data"
+ENV NEURODAMUS_MODS_DIR="$WORKDIR/neurodamus/neurodamus/data/mod"
 ENV PATH="$INSTALL_DIR/bin:$USR_VENV/bin:$PATH"
 ENV PYTHONPATH="$INSTALL_DIR/lib/python:$PYTHONPATH"
 
