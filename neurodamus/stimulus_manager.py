@@ -881,7 +881,7 @@ class SpatiallyUniformEField(BaseStim):
                 )
                 es.attach_to(sc.sec, target_point_list.x[sec_id], inject_position=segment_position)
 
-                self.stimList.append(es)  # save Extracellular field
+        self.stimList.append(es)  # save Extracellular field
 
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(SimConfig.run_conf["Dt"])

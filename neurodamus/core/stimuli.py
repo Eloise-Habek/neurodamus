@@ -514,6 +514,8 @@ class ElectrodeSource(SignalSource):
         self.ramp_up_time = ramp_up_time
         self.ramp_down_time = ramp_down_time
 
+        self.extracellulars = []
+
     def update_base_position(self, base_position):
         self.base_position = base_position
 
@@ -547,7 +549,12 @@ class ElectrodeSource(SignalSource):
 
         section.insert("extracellular")
         seg = section(x)
-        self.stim_vec.play(seg.extracellular._ref_e, self.time_vec, 1)
+        out = self.stim_vec.play(seg.extracellular._ref_e, self.time_vec, 1)
+
+        self.extracellulars.append(stim_vec_final)
+        self.extracellulars.append(seg.extracellular)
+        self.extracellulars.append(seg.extracellular.e)
+        self.extracellulars.append(out)
 
     def apply_ramp(self, signal_vec, step):
         """Apply signal ramp up and down
