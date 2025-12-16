@@ -838,6 +838,15 @@ class SpatiallyUniformEField(BaseStim):
 
         self.parse_check_all_parameters(stim_info)
 
+        es = ElectrodeSource(
+            delay=self.delay,
+            duration=self.duration,
+            fields=self.fields,
+            ramp_up_time=self.ramp_up_time,
+            ramp_down_time=self.ramp_down_time,
+            dt=self.dt
+        )
+
         # apply stim to each point in target_points
         for target_point_list in target_points:
             gid = target_point_list.gid
@@ -849,6 +858,8 @@ class SpatiallyUniformEField(BaseStim):
             soma_global_position = np.array(all_seg_points[soma.name()]).mean(axis=0)
             soma_local_position = np.array(local_seg_points[soma.name()]).mean(axis=0)
 
+            es.update_base_position(soma_global_position)
+
             def local_to_global(pos, cell=cell, soma_local_position=soma_local_position):
                 return cell.local_to_global_coord_mapping(np.vstack([soma_local_position, pos]))[1]
 
@@ -856,15 +867,7 @@ class SpatiallyUniformEField(BaseStim):
                 # skip sections not in this split
                 if not sc.exists():
                     continue
-                es = ElectrodeSource(
-                    delay=self.delay,
-                    duration=self.duration,
-                    fields=self.fields,
-                    ramp_up_time=self.ramp_up_time,
-                    ramp_down_time=self.ramp_down_time,
-                    dt=self.dt,
-                    base_position=soma_global_position,
-                )
+
                 segment_position = (
                     self.get_segment_position(
                         all_seg_points[sc.sec.name()],

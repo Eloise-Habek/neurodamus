@@ -506,13 +506,15 @@ class ElectrodeSource(SignalSource):
             usually the soma baricenter
     """
 
-    def __init__(self, delay, duration, fields, ramp_up_time, ramp_down_time, dt, base_position):
+    def __init__(self, delay, duration, fields, ramp_up_time, ramp_down_time, dt):
         super().__init__(base_amp=0, delay=delay)
         self.fields = fields
         self.duration = duration
         self.dt = dt
         self.ramp_up_time = ramp_up_time
         self.ramp_down_time = ramp_down_time
+
+    def update_base_position(self, base_position):
         self.base_position = base_position
 
     def add_cosines(self):
