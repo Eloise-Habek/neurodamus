@@ -837,7 +837,7 @@ class SpatiallyUniformEField(BaseStim):
         self.stimList = []  # Extracellular fields go here
 
         self.parse_check_all_parameters(stim_info)
-
+        print(self.dt)
         es = ElectrodeSource(
             delay=self.delay,
             duration=self.duration,
