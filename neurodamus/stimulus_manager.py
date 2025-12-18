@@ -844,7 +844,8 @@ class SpatiallyUniformEField(BaseStim):
             fields=self.fields,
             ramp_up_time=self.ramp_up_time,
             ramp_down_time=self.ramp_down_time,
-            dt=0.25
+            #testing where dt comes from really
+            dt=self.dt
         )
 
         # apply stim to each point in target_points
