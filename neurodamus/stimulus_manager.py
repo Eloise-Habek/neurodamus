@@ -886,6 +886,7 @@ class SpatiallyUniformEField(BaseStim):
 
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(SimConfig.run_conf["Dt"])
+        print(self.dt)
         self.fields = stim_info["Fields"]
         self.ramp_up_time = stim_info.get("RampUpTime", 0.0)
         self.ramp_down_time = stim_info.get("RampDownTime", 0.0)
