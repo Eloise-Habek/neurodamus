@@ -29,8 +29,9 @@ def main():
         #We can also add these as command arguments later if we want to
         bin = 5
         simulationData, allData, cellData, spikeData = load_data(config_path)
-        cell_to_rank = get_cell_to_rank(cellData, simulationData)
-        psth_plot(spikeData, f"all cells", cell_to_rank, simulationData,bin_width=bin, save_histogram=f"AllCells_rasterplot_{bin}bin_smoothed10.png", smoothed=True)
+        cell_to_rank = geom_rank_cell_nodes(cellData, simulationData)
+        pop_size = cellData.shape[0]
+        psth_plot(spikeData, f"", cell_to_rank, simulationData,population_size=pop_size, bin_width=bin, save_histogram=f"{config_path}/figures/{bin}bin_smoothed.png", smoothed=True)
 
     except Exception as e:
         print("The data visualization failed.")

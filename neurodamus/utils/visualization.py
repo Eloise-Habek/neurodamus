@@ -24,7 +24,9 @@ def load_data(sim_config_path):
         spikeData = None
 
     try:
-        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(group=s.config['node_set'])
+        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(
+            group=s.config["node_set"]
+        )
     except Exception:
         cellData = None
 
@@ -237,21 +239,23 @@ def psth_plot(
     title,
     cell_to_rank,
     simulationData,
+    population_size=None,
     dt=0.1,
     bin_width=1,
     save_histogram=None,
     smoothed=False,
+    without_stim=False,
 ):
-
+    # dt = simulationData.dt in ms-1
+    # simulation_time = simulationData.tstop
+    # spikes have different sampling frequency from stimulation
     simulation_time = simulationData.time_stop
-
+    if population_size is None:
+        population_size = cell_to_rank.shape[0]
     fig, (ax_raster, ax_stimulation, ax_hist) = define_psth_plot(
-        simulation_time, title, cell_to_rank
+        simulation_time, title, n_neurons=population_size
     )
 
-    cell_to_rank = pd.Series(
-        range(len(cell_to_rank) - 1, -1, -1), index=cell_to_rank.index
-    )
     spikeData_ranked = spikeData.map(cell_to_rank)
     spikes = spikeData_ranked.reset_index().to_numpy()
     cell_ids_rank = spikes[:, 1]
@@ -269,12 +273,18 @@ def psth_plot(
         delay=0,
         time_stop=simulation_time,
     )
+    # bins, firing_rate = define_histogram(spikeData_ranked, simulation_time, bin_width, cell_to_rank.shape[0])
 
-    # create stimulation plot
-    stimulation_plot, f, amp = define_stimulation_function(simulationData, dt)
-    # plot stimulation function
-    amp = round(amp, 0)
-    ax_hist.step(bins, firing_rate, where="mid", label=f"{f}Hz{amp}Vm")
+    # plot histogram
+    label = "undefined"
+    stimulation_plot = np.zeros((time.shape[0],))
+    if not without_stim:
+        # create stimulation plot
+        stimulation_plot, f, amp = define_stimulation_function(simulationData, dt)
+        # plot stimulation function
+        amp = round(amp, 0)
+        label = f"{f}Hz{amp}Vm"
+    ax_hist.step(bins, firing_rate, where="mid", label=label)
 
     if smoothed:
         sigma_ms = 10.0  # adjusted for frequency resolution up to 15Hz
@@ -284,7 +294,7 @@ def psth_plot(
             bins,
             smoothed_fr,
             color="C1",
-            lw=1,
+            lw=2,
             label=f"Gaussian smoothed, σ={sigma_ms} ms",
         )
 
