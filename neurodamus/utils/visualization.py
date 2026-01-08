@@ -8,28 +8,27 @@ from scipy.ndimage import gaussian_filter1d
 
 
 def load_data(sim_config_path):
-    with silence_fdstderr():
-        try:
-            s = bp.Simulation(sim_config_path)
-        except Exception:
-            return None, None, None, None
+    try:
+        s = bp.Simulation(sim_config_path)
+    except Exception:
+        return None, None, None, None
 
-        try:
-            allData = s.reports["soma"]["S1nonbarrel_neurons"].get()
-        except Exception:
-            allData = None
+    try:
+        allData = s.reports["soma"]["S1nonbarrel_neurons"].get()
+    except Exception:
+        allData = None
 
-        try:
-            spikeData = s.spikes["S1nonbarrel_neurons"].get()
-        except Exception:
-            spikeData = None
+    try:
+        spikeData = s.spikes["S1nonbarrel_neurons"].get()
+    except Exception:
+        spikeData = None
 
-        try:
-            cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(
-                group=s.config["node_set"]
-            )
-        except Exception:
-            cellData = None
+    try:
+        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(
+            group=s.config["node_set"]
+        )
+    except Exception:
+        cellData = None
 
     return s, allData, cellData, spikeData
 
