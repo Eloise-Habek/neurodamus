@@ -8,33 +8,36 @@ from scipy.ndimage import gaussian_filter1d
 
 
 def load_data(sim_config_path):
-    try:
-        s = bp.Simulation(sim_config_path)
-    except Exception:
-        return None, None, None, None
+    with silence_fdstderr():
+        try:
+            s = bp.Simulation(sim_config_path)
+        except Exception:
+            return None, None, None, None
 
-    try:
-        allData = s.reports["soma"]["S1nonbarrel_neurons"].get()
-    except Exception:
-        allData = None
+        try:
+            allData = s.reports["soma"]["S1nonbarrel_neurons"].get()
+        except Exception:
+            allData = None
 
-    try:
-        spikeData = s.spikes["S1nonbarrel_neurons"].get()
-    except Exception:
-        spikeData = None
+        try:
+            spikeData = s.spikes["S1nonbarrel_neurons"].get()
+        except Exception:
+            spikeData = None
 
-    try:
-        cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(
-            group=s.config["node_set"]
-        )
-    except Exception:
-        cellData = None
+        try:
+            cellData = s.circuit.nodes["S1nonbarrel_neurons"].get(
+                group=s.config["node_set"]
+            )
+        except Exception:
+            cellData = None
 
     return s, allData, cellData, spikeData
 
 
 def define_central_axis(somaPos):
-    ## code from blue brain project - BlueRecording
+    ## code from blue brain project
+    # This output is going to be the direction vector onto which the electric field will be projected
+    # how to do this from the data about the placement of the pyramidal cells?
 
     center = np.mean(somaPos, axis=0).values
 
@@ -52,7 +55,7 @@ def rotation_matrix_from_vectors(a, b):
     """
     Return rotation matrix that rotates vector a to vector b.
     Both a and b must be unit vectors.
-    Uses Rodrigues' rotation formula. -- Chat generated
+    Uses Rodrigues' rotation formula.
     """
     # cross and dot
     v = np.cross(a, b)
@@ -72,6 +75,7 @@ def rotation_matrix_from_vectors(a, b):
             # rotation by pi around u: R = I - 2 uu^T
             return np.eye(3) - 2.0 * np.outer(u, u)
 
+    # Rodrigues formula
     k = v / v_norm
     K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
     angle = np.arccos(np.clip(c, -1.0, 1.0))
@@ -87,11 +91,14 @@ def get_somaPos(simulationData):
     return n["S1nonbarrel_neurons"].get(properties=["x", "y", "z"])
 
 
-def get_cell_to_rank(cellData, simulationData):
+def geom_rank_cell_nodes(cellData, simulationData):
+    # rank cells based on rotation in z-axis position
 
     somaPosition = get_somaPos(simulationData)
-    center, azimuth, elevation, pca1 = define_central_axis(somaPosition)
-    pca1 = pca1 / np.linalg.norm(pca1)
+    center, azimuth, elevation, pca1 = define_central_axis(
+        somaPosition
+    )  # replace with your PCA vector (already normalized as you said)
+    pca1 = pca1 / np.linalg.norm(pca1)  # safe to re-normalize (no-op if already unit)
 
     z_axis = np.array([0.0, 0.0, 1.0])
 
@@ -129,21 +136,21 @@ def get_estim_data(simulationData):
     return x, y, z, f, delay, duration, amp
 
 
-def define_psth_plot(simulation_time, title, cell_to_rank):
+def define_psth_plot(simulation_time, title, n_neurons):
     fig, (ax_raster, ax_stimulation) = plt.subplots(
         2, 1, figsize=(16, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
     )
 
     ax_raster.set_xlabel("Time (ms)")
     ax_raster.set_ylabel("Neurons")
-    ax_raster.set_title(f"Raster plot - {title}")
+    ax_raster.set_title(f"Raster plot {title}")
     ax_raster.grid(False)
-    ax_raster.set_ylim(0, cell_to_rank.shape[0])
+    ax_raster.set_ylim(0, n_neurons)
 
     ax_hist = ax_raster.twinx()
 
     ax_hist.set_ylabel("Populaion Firing rate (Hz)")
-    # ax_hist.set_ylim(0, 1)
+    ax_hist.set_ylim(0, 1)
 
     ax_stimulation.set_xlabel("Time (ms)")
     ax_stimulation.set_ylabel("Amplitude (V/m)")
@@ -159,6 +166,23 @@ def define_psth_plot(simulation_time, title, cell_to_rank):
     return fig, (ax_raster, ax_stimulation, ax_hist)
 
 
+# def define_histogram(spikeData, simulation_time, bin_width, n_neurons,delay=0):
+#     all_spikes = spikeData.index.tolist()
+#     bins = np.arange(delay, simulation_time + bin_width, bin_width)  # in ms
+#     hist_counts, _ = np.histogram(all_spikes, bins=bins)
+#     bin_seconds = bin_width*1e-3
+#     firing_rate = hist_counts / n_neurons / bin_seconds
+
+#     return bins, firing_rate
+
+# def get_modulation_index():
+#     #this would give us information about the baseline, against activity
+#     #what information does this give us?
+
+
+#     return MDI
+
+
 def get_firingrate_hist(
     simulationData,
     spikeData,
@@ -168,15 +192,13 @@ def get_firingrate_hist(
     time_stop=None,
     center=True,
 ):
-    # Population firing rate
     stimulation_info = get_estim_data(simulationData)
-
     if delay is None:
         if stimulation_info is None:
-            delay = 0
+            # amount of time for the network to rest
+            delay = 200
         else:
             x, y, z, f, delay, duration, amp = stimulation_info
-
     if time_stop is None:
         time_stop = simulationData.time_stop
     bins = np.arange(delay, time_stop + bin_width, bin_width)  # in ms
@@ -196,20 +218,12 @@ def define_stimulation_function(simulationData, dt):
     stimulation_info = get_estim_data(simulationData)
     simulation_time = simulationData.time_stop
     time = np.arange(0, simulation_time, dt)
-
     if stimulation_info == None:
         stimulation_plot, f, amp = np.zeros((time.shape[0],)), 0, 0
-
     else:
         x, y, z, f, delay, duration, amp = stimulation_info
-
-        if simulation_time < delay:
-            stimulation_plot, f, amp = np.zeros((time.shape[0],)), 0, 0
-            return stimulation_plot, f, amp
-
         if simulation_time - delay < duration:
             duration = simulation_time - delay
-
         if f == 0:
             print("DC stimulation")
             duration_time = np.arange(0, duration, dt)
@@ -230,7 +244,6 @@ def define_stimulation_function(simulationData, dt):
             delay_time = np.arange(0, simulation_time - delay - duration, dt)
             delay_plot = np.zeros((delay_time.shape[0],))
             stimulation_plot = np.concatenate((stimulation_plot, delay_plot))
-
     return stimulation_plot, f, amp
 
 
