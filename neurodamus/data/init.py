@@ -24,18 +24,17 @@ def main():
     exit_code = commands.neurodamus(args)
 
     config_path = args[0]
-
     try:
         #We can also add these as command arguments later if we want to
         bin = 5
         simulationData, allData, cellData, spikeData = load_data(config_path)
         cell_to_rank = geom_rank_cell_nodes(cellData, simulationData)
         pop_size = cellData.shape[0]
-        psth_plot(spikeData, f"", cell_to_rank, simulationData,population_size=pop_size, bin_width=bin, save_histogram=f"{config_path}/figures/{bin}bin_smoothed.png", smoothed=True)
+        psth_plot(spikeData, f"", cell_to_rank, simulationData,population_size=pop_size, bin_width=bin, save_histogram=f"reporting/{bin}bin_smoothed.png", smoothed=True)
 
     except Exception as e:
         print("The data visualization failed.")
-        print(e)
+        # print(e)
 
     return exit_code
 
