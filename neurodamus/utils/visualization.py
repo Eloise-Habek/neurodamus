@@ -15,6 +15,11 @@ def load_data(sim_config_path):
 
     try:
         allData = s.reports["soma"]["S1nonbarrel_neurons"].get()
+        #the error you see in the output being
+        #  #001: ../../../src/H5Fint.c line 1644 in H5F_open(): unable to open file: time = Sat Jan 17 17:01:54 2026
+        # , name = '/mnt/mydata/Documents/eStim/sim130Hz1Vm/reporting/soma.h5', tent_flags = 0
+        # major: File accessibility
+        #this error will not affect the plotting it comes from the original error about soma.h5 voltage tracing access
     except Exception:
         allData = None
 
