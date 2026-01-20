@@ -197,12 +197,15 @@ def get_firingrate_hist(
     center=True,
 ):
     stimulation_info = get_estim_data(simulationData)
+    if stimulation_info is not None:
+        x,y,z,f,delay_,duration,amp = stimulation_info
+        bin_width = min((1e3/(2*f)), bin_width)
+
     if delay is None:
+        delay = delay_
         if stimulation_info is None:
-            # amount of time for the network to rest
             delay = 200
-        else:
-            x, y, z, f, delay, duration, amp = stimulation_info
+
     if time_stop is None:
         time_stop = simulationData.time_stop
     bins = np.arange(delay, time_stop + bin_width, bin_width)  # in ms
